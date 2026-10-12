@@ -1,0 +1,461 @@
+diff --git a/crates/engine/src/cmd/formulas.rs b/crates/engine/src/cmd/formulas.rs
+index df48a2c..3ddf4a3 100644
+--- a/crates/engine/src/cmd/formulas.rs
++++ b/crates/engine/src/cmd/formulas.rs
+@@ -1,7 +1,7 @@
+ //! Formulas tab: AutoSum, Insert Function, names, auditing, calculation.
+ 
+ use gridcraft_core::{CellRef, RangeRef};
+-use gridcraft_model::{CalcMode, DefinedName, Formula};
++use gridcraft_model::{CalcMode, DefinedName, Formula, NumFmt, Sheet, Workbook};
+ use serde_json::{Value as Json, json};
+ 
+ use super::*;
+@@ -71,6 +71,7 @@ pub fn specs() -> Vec<CommandSpec> {
+ fn auto_sum(s: &mut Session, p: &Json) -> Result<Json> {
+     let func = str_param(p, "function").unwrap_or("SUM").to_ascii_uppercase();
+     let d = s.doc()?;
++    let si = d.wb.active_sheet;
+     let sh = d.wb.active().ok_or(EngineError::NoDocument)?;
+     let sel = match str_param(p, "range") {
+         Some(_) => target_range(s, p)?,
+@@ -83,13 +84,19 @@ fn auto_sum(s: &mut Session, p: &Json) -> Result<Json> {
+         let mut writes = Vec::new();
+         let last_row_blank = (sel.start.col..=sel.end.col).all(|c| sh.value(CellRef::new(sel.end.row, c)).is_empty());
+         let (data_end_row, out_row) = if last_row_blank { (sel.end.row.saturating_sub(1), sel.end.row) } else { (sel.end.row, below.row) };
++        let mut formats = Vec::new();
+         for c in sel.start.col..=sel.end.col {
+             let r = RangeRef::new(CellRef::new(sel.start.row, c), CellRef::new(data_end_row, c));
+-            writes.push((CellRef::new(out_row, c), format!("={func}({})", r.a1())));
++            let total = CellRef::new(out_row, c);
++            if let Some(nf) = auto_sum_num_fmt(&d.wb, sh, r) {
++                formats.push((total, nf));
++            }
++            writes.push((total, format!("={func}({})", r.a1())));
+         }
+-        for (c, f) in writes {
++        for (c, f) in &writes {
+             s.execute("cell.set", json!({"cell": c.a1(), "input": f}))?;
+         }
++        set_auto_sum_formats(s, si, formats)?;
+         return ok();
+     }
+     // Single cell: guess the range above, else to the left.
+@@ -115,6 +122,7 @@ fn auto_sum(s: &mut Session, p: &Json) -> Result<Json> {
+         }
+         range = Some(RangeRef::new(CellRef::new(at.row, left), CellRef::new(at.row, at.col - 1)));
+     }
++    let fmt = range.and_then(|r| auto_sum_num_fmt(&d.wb, sh, r));
+     let text = match range {
+         Some(r) => format!("={func}({})", r.a1()),
+         None => {
+@@ -127,9 +135,46 @@ fn auto_sum(s: &mut Session, p: &Json) -> Result<Json> {
+         return Ok(json!({"formula": text}));
+     }
+     s.execute("cell.set", json!({"cell": at.a1(), "input": text}))?;
++    if let Some(nf) = fmt {
++        set_auto_sum_formats(s, si, vec![(at, nf)])?;
++    }
+     Ok(json!({"formula": text}))
+ }
+ 
++/// The number format of a range's last numeric cell, scanning up from its bottom-right corner.
++/// Excel's AutoSum writes its total with the number format of the cells it added up, so a currency
++/// column sums to a currency total. `None` when that cell is unformatted (`General`), leaving the
++/// total's own style alone rather than inventing a format.
++fn auto_sum_num_fmt(wb: &Workbook, sh: &Sheet, r: RangeRef) -> Option<NumFmt> {
++    for row in (r.start.row..=r.end.row).rev() {
++        for col in (r.start.col..=r.end.col).rev() {
++            let c = CellRef::new(row, col);
++            if sh.value(c).is_number() {
++                let nf = wb.styles.get(sh.style_id(c)).num_fmt.clone();
++                return (nf.as_str() != "General").then_some(nf);
++            }
++        }
++    }
++    None
++}
++
++/// Puts each total's source number format onto the total cell's *own* style, keeping the font,
++/// fill and borders AutoSum wrote there: only the number format follows the data, as in Excel.
++fn set_auto_sum_formats(s: &mut Session, sheet: usize, formats: Vec<(CellRef, NumFmt)>) -> Result<()> {
++    if formats.is_empty() {
++        return Ok(());
++    }
++    edit(s, |cx| {
++        for (c, nf) in formats {
++            let cur = cx.wb.sheet(sheet).map(|sh| sh.style_id(c)).unwrap_or_default();
++            let st = cx.wb.styles.derive(cur, |s| s.num_fmt = nf.clone());
++            cx.sheet_mut(sheet)?.set_style(c, st);
++            cx.touch(sheet, c);
++        }
++        Ok(())
++    })
++}
++
+ fn insert_function(s: &mut Session, p: &Json) -> Result<Json> {
+     match str_param(p, "name") {
+         Some(n) => {
+diff --git a/crates/engine/src/tests.rs b/crates/engine/src/tests.rs
+index c9f4d0a..362101d 100644
+--- a/crates/engine/src/tests.rs
++++ b/crates/engine/src/tests.rs
+@@ -1440,6 +1440,64 @@ fn fmt_of(s: &Session, a: &str) -> String {
+     wb.styles.get(sh.style_id(CellRef::parse(a).unwrap())).num_fmt.as_str().to_string()
+ }
+ 
++#[test]
++fn format_painter_picks_up_and_applies_to_a_target_range() {
++    let mut s = s();
++    s.execute("home.bold", json!({"range": "A1", "on": true})).unwrap();
++    s.execute("home.formatCells", json!({"range": "A1", "style": {"num_fmt": "\"$\"#,##0.00"}})).unwrap();
++    // Nothing picked up: there is no format to paste.
++    assert!(s.execute("edit.formatPainter", json!({"apply": "C3:D4"})).is_err());
++    // Pick up the selection's format, then paste it over a target range (the source tiles over it).
++    s.execute("selection.set", json!({"range": "A1"})).unwrap();
++    s.execute("edit.formatPainter", json!({})).unwrap();
++    s.execute("edit.formatPainter", json!({"apply": "C3:D4"})).unwrap();
++    {
++        let d = s.doc().unwrap();
++        let sh = d.wb.active().unwrap();
++        let src = sh.style_id(CellRef::parse("A1").unwrap());
++        assert!(d.wb.styles.get(src).font.bold);
++        for cell in ["C3", "D3", "C4", "D4"] {
++            assert_eq!(sh.style_id(CellRef::parse(cell).unwrap()), src, "{cell}");
++        }
++    }
++    assert_eq!(fmt_of(&s, "D4"), "\"$\"#,##0.00");
++    // One-shot: a non-sticky painter clears itself once it has been applied.
++    assert!(s.format_painter.is_none());
++}
++
++#[test]
++fn auto_sum_total_follows_the_column_number_format() {
++    let mut s = s();
++    s.execute("range.setValues", json!({"range": "A1:A3", "values": [[10.0], [20.0], [30.0]]})).unwrap();
++    s.execute("home.numberFormat", json!({"range": "A1:A3", "format": "Currency"})).unwrap();
++    s.execute("selection.set", json!({"range": "A1:A3"})).unwrap();
++    s.execute("formulas.autoSum", json!({})).unwrap();
++    assert_eq!(v(&s, "A4"), Value::Number(60.0));
++    assert_ne!(fmt_of(&s, "A4"), "General");
++    assert_eq!(fmt_of(&s, "A4"), fmt_of(&s, "A3"), "the total takes the number format of the data");
++}
++
++#[test]
++fn auto_sum_total_stays_general_for_unformatted_numbers() {
++    let mut s = s();
++    s.execute("range.setValues", json!({"range": "A1:A3", "values": [[10.0], [20.0], [30.0]]})).unwrap();
++    s.execute("selection.set", json!({"range": "A1:A3"})).unwrap();
++    s.execute("formulas.autoSum", json!({})).unwrap();
++    assert_eq!(v(&s, "A4"), Value::Number(60.0));
++    assert_eq!(fmt_of(&s, "A4"), "General");
++}
++
++#[test]
++fn auto_sum_single_cell_uses_the_format_of_the_range_above() {
++    let mut s = s();
++    s.execute("range.setValues", json!({"range": "B1:B3", "values": [[1.0], [2.0], [3.0]]})).unwrap();
++    s.execute("home.numberFormat", json!({"range": "B1:B3", "format": "Percentage"})).unwrap();
++    s.execute("selection.set", json!({"cell": "B4"})).unwrap();
++    s.execute("formulas.autoSum", json!({})).unwrap();
++    assert_eq!(v(&s, "B4"), Value::Number(6.0));
++    assert_eq!(fmt_of(&s, "B4"), "0.00%");
++}
++
+ #[test]
+ fn checkboxes_keep_values_toggle_and_delete_in_two_passes() {
+     // Issue #196.
+diff --git a/crates/ui-egui/src/backstage.rs b/crates/ui-egui/src/backstage.rs
+index 824b4da..ac96579 100644
+--- a/crates/ui-egui/src/backstage.rs
++++ b/crates/ui-egui/src/backstage.rs
+@@ -531,8 +531,10 @@ fn save_as(app: &mut SheetApp, ui: &mut Ui, bs: &mut Backstage, out: &mut Outcom
+         });
+     });
+     ui.add_space(14.0);
+-    // Desktop: the system Save dialog. Web: the file downloads.
+-    let web = app.services.pick_save.is_none() && app.services.download.is_some();
++    // Desktop: the system Save dialog. Web, and Android: we have one and the file is written
++    // where it says. Only a host with no save dialog at all downloads, so the button says
++    // what it will actually do.
++    let web = app.services.pick_save.is_none() && app.services.pick_save_async.is_none() && app.services.download.is_some();
+     let label = if web { format!("{} (.{fmt})", lang.tr("Download")) } else { lang.tr("Browse…").to_string() };
+     if square_button(ui, Icon::OpenFolder, &label).clicked() && app.commit_edit(0, 0, false, false) {
+         if fmt == "xlsx" {
+@@ -737,17 +739,19 @@ pub fn export_as(app: &mut SheetApp, fmt: &str) -> bool {
+     };
+     let title = app.session.active().map(|d| d.display_title()).unwrap_or_else(|| "Book1".into());
+     let stem = std::path::Path::new(&title).file_stem().and_then(|s| s.to_str()).unwrap_or("Book1").to_string();
+-    if let Some(pick) = &app.services.pick_save {
+-        let Some(path) = pick(&format!("{stem}.{fmt}")) else { return false };
++    // A host with a save dialog is asked for a path and writes on the frame the answer arrives, so
++    // this reports "handed over" rather than "written". The workbook is untouched either way: an
++    // export is a copy, and it must not become the workbook's own file (`save_dialogs`).
++    let fmt_owned = fmt.to_string();
++    let asked = app.ask_save(&format!("{stem}.{fmt}"), move |app, path| {
+         // The picker may suggest a workbook extension; the export writes the chosen format.
+-        let path = std::path::Path::new(&path).with_extension(fmt).to_string_lossy().into_owned();
+-        return match app.run(id, json!({"path": path})) {
+-            Ok(_) => true,
+-            Err(e) => {
+-                app.message = Some(("GridCraft".into(), crate::clean_error(&e)));
+-                false
+-            }
+-        };
++        let path = std::path::Path::new(path).with_extension(&fmt_owned).to_string_lossy().into_owned();
++        if let Err(e) = app.run(id, json!({"path": path})) {
++            app.message = Some(("GridCraft".into(), crate::clean_error(&e)));
++        }
++    });
++    if asked {
++        return true;
+     }
+     if app.services.download.is_none() {
+         app.message = Some(("GridCraft".into(), "Exporting needs a file picker, which this window doesn't have.".into()));
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index c3f0ea6..d770886 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -1008,14 +1008,17 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
+                     d.values.insert("path".into(), json!(path.clone()));
+                     ok_cancel(ui, &mut confirm, &mut open);
+                     if confirm {
+-                        let target = if path.is_empty() { app.services.pick_save.as_ref().and_then(|f| f(&format!("Copy.{fmt}"))) } else { Some(path) };
+-                        if let Some(t) = target {
+-                            let id = match fmt.as_str() {
+-                                "csv" => "file.exportCsv",
+-                                "html" => "file.exportHtml",
+-                                _ => "file.saveAs",
+-                            };
+-                            app.run_or_alert(id, json!({"path": t}));
++                        let id = match fmt.as_str() {
++                            "csv" => "file.exportCsv",
++                            "html" => "file.exportHtml",
++                            _ => "file.saveAs",
++                        };
++                        if path.is_empty() {
++                            // Nothing typed: ask, and write the copy when the answer arrives.
++                            let fmt = fmt.clone();
++                            app.ask_save(&format!("Copy.{fmt}"), move |app, t| app.run_or_alert(id, json!({"path": t})));
++                        } else {
++                            app.run_or_alert(id, json!({"path": path}));
+                         }
+                     }
+                 }
+diff --git a/crates/ui-egui/src/grid.rs b/crates/ui-egui/src/grid.rs
+index 9385edd..3e08d61 100644
+--- a/crates/ui-egui/src/grid.rs
++++ b/crates/ui-egui/src/grid.rs
+@@ -1836,6 +1836,12 @@ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &
+             }
+         } else if mods.command {
+             select_ranges(app, RangeRef::cell(c), true, c);
++        } else if primary_clicked && app.session.format_painter.is_some() {
++            // The Format Painter is only *picked up* by the ribbon — nothing ever delivered the
++            // format to a cell, so the tool was dead. A plain click lands it on the cell the click
++            // hit (Excel paints on the click); the engine still owns the tiling and the clearing.
++            // Shift and Command clicks above extend the selection and never reach this branch.
++            app.run_or_alert("edit.formatPainter", json!({"apply": c.a1()}));
+         } else {
+             let _ = app.session.run("selection.set", json!({"cell": c.a1()}));
+             if primary_clicked && wb.styles.get(sh.style_id(c)).num_fmt.as_str() == "checkbox" {
+@@ -1983,6 +1989,15 @@ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &
+                 if let Some(p) = pos {
+                     select_to_pointer(app, geo, sh, wb, p);
+                 }
++                // Excel delivers the Format Painter on mouse-up over the whole dragged range; the
++                // ribbon only picks it up, so a drag has to paint it here. Not while editing, where
++                // a select-drag is point mode for a formula reference, not a paint.
++                if app.editor.is_none()
++                    && app.session.format_painter.is_some()
++                    && let Some(target) = app.session.active().map(|d| d.selection.current().a1())
++                {
++                    app.run_or_alert("edit.formatPainter", json!({"apply": target}));
++                }
+             }
+             Drag::Fill { target: Some(t) } => {
+                 let src = sel.current();
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 9ef0d50..b837667 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -27,6 +27,7 @@ pub mod panes;
+ pub mod paper_view;
+ pub mod pivot_pane;
+ pub mod ribbon;
++mod save_dialogs;
+ pub mod selection_glide;
+ pub mod tabs;
+ pub mod text_box;
+@@ -156,6 +157,12 @@ pub struct Notice {
+ pub struct Services {
+     pub pick_open: Option<Box<dyn Fn() -> Option<String>>>,
+     pub pick_save: Option<Box<dyn Fn(&str) -> Option<String>>>,
++    /// A save dialog whose answer arrives later: what `pick_save` is for a host that cannot show a
++    /// panel without ending the frame — the browser, and Android, where the picker is drawn with
++    /// egui between frames. The host returns a receiver and the app runs what asked on the frame
++    /// the path arrives ([`save_dialogs`]); an empty answer is a cancellation. A host with this
++    /// must be preferred over handing it finished bytes, which cannot tell the app where they went.
++    pub pick_save_async: Option<Box<dyn Fn(&str) -> std::sync::mpsc::Receiver<Option<String>>>>,
+     /// Native picture picker (PNG/JPEG), separate from workbook opening.
+     pub pick_picture: Option<Box<dyn Fn() -> Option<String>>>,
+     /// Browser picture picker. Each dialog owns its inbox, so canceled picks cannot
+@@ -205,6 +212,8 @@ pub struct SheetApp {
+     /// Dismissible info bar under the ribbon (open-time notices).
+     pub notice: Option<Notice>,
+     pub services: Services,
++    /// The save dialog the host is showing, and what to do with its answer ([`save_dialogs`]).
++    pending_save: Option<save_dialogs::PendingSave>,
+     /// Synthetic input from agents, one batch per frame (drags need several frames).
+     pub synthetic: std::collections::VecDeque<Vec<egui::Event>>,
+     pub control_rx: Option<std::sync::mpsc::Receiver<ControlRequest>>,
+@@ -251,6 +260,7 @@ impl SheetApp {
+             toast: None,
+             notice: None,
+             services,
++            pending_save: None,
+             synthetic: Default::default(),
+             control_rx: None,
+             grid: grid::GridState {
+@@ -567,6 +577,18 @@ impl SheetApp {
+                 }
+             }
+         }
++        // A workbook that now has a file of its own — just saved, or opened — belongs at the top of
++        // the recent list. `open_path` does this for opening, and nothing did it for saving: a
++        // workbook saved with Save As never appeared in Recent, so the only way back to it was to
++        // find it by hand. Only when it is not already first, so the list stays a list of files
++        // rather than of whatever is on screen.
++        if let Some(path) = self.session.active().and_then(|d| d.path.clone())
++            && self.ui.recent.first() != Some(&path)
++        {
++            self.ui.recent.retain(|p| *p != path);
++            self.ui.recent.insert(0, path);
++            self.ui.recent.truncate(20);
++        }
+     }
+ 
+     pub fn open_dialog(&mut self, name: &str, params: Json) {
+@@ -586,12 +608,16 @@ impl SheetApp {
+             }
+             "saveAs" => {
+                 let suggested = self.session.active().map(|d| d.display_title()).unwrap_or_else(|| "Book1".into());
+-                if let Some(pick) = &self.services.pick_save {
+-                    if let Some(path) = pick(&suggested) {
+-                        let path = if std::path::Path::new(&path).extension().is_none() { format!("{path}.xlsx") } else { path };
+-                        self.run_or_alert("file.save", json!({"path": path}));
+-                    }
+-                } else if self.services.download.is_some()
++                // A host with a save dialog gets the path back, so the workbook learns which file it
++                // is: the title bar follows, `file.save` stops asking, and closing stops prompting.
++                // Only a host with neither a blocking nor an asynchronous dialog falls through to
++                // the bytes below, which cannot name what they wrote (`save_dialogs`).
++                let asked = self.ask_save(&suggested, |app, path| {
++                    let path = if std::path::Path::new(path).extension().is_none() { format!("{path}.xlsx") } else { path.to_string() };
++                    app.run_or_alert("file.save", json!({"path": path}));
++                });
++                if !asked
++                    && self.services.download.is_some()
+                     && let Ok(r) = self.run("file.saveBytes", json!({"format": "xlsx"}))
+                     && let Some(dl) = &self.services.download
+                     && let Some(b) = r.get("base64").and_then(Json::as_str).and_then(gridcraft_engine::io::base64_decode)
+@@ -883,6 +909,8 @@ impl SheetApp {
+             ctx.set_zoom_factor(zoom);
+             ctx.request_repaint();
+         }
++        // A save dialog that answered between frames: what asked runs now, with the path.
++        self.poll_save();
+         control::poll(self, ctx);
+         // Files read asynchronously (web file picker, dropped files).
+         let arrived: Vec<(String, Vec<u8>)> = self
+diff --git a/crates/ui-egui/src/save_dialogs.rs b/crates/ui-egui/src/save_dialogs.rs
+new file mode 100644
+index 0000000..a7fd36d
+--- /dev/null
++++ b/crates/ui-egui/src/save_dialogs.rs
+@@ -0,0 +1,85 @@
++//! Save dialogs that don't hold the frame, and what the answer to them is for.
++//!
++//! # Why this exists
++//!
++//! `Services::pick_save` is the blocking shape: the host shows a panel and returns the chosen path
++//! in the same call. That works on the desktop (`rfd`) and cannot work on a host that draws its own
++//! picker between frames — the browser, and Android, where there is no native dialog to call at all.
++//! Those hosts return a receiver instead ([`Services::pick_save_async`]) and the app does what the
++//! blocking call would have done on the frame the path arrives, exactly as
++//! [`crate::dialogs`]/[`crate::backstage`] already do for pictures and opening.
++//!
++//! # The cost of not having it
++//!
++//! Handing the host finished *bytes* instead (the web `download` path) looks equivalent and is not:
++//! the app is never told where the file went, so `DocState::path` stays `None` and the workbook is
++//! still "Book1" with unsaved changes — the title bar never changes, `Ctrl+S` asks for a location
++//! again, and closing prompts to save what was just saved. Every save dialog in this app goes
++//! through [`SheetApp::ask_save`] so that cannot happen.
++//!
++//! [`Services::pick_save_async`]: crate::Services::pick_save_async
++
++use std::sync::mpsc::{Receiver, TryRecvError};
++
++use crate::SheetApp;
++
++/// A save dialog the host is showing: the answer arrives on `rx`, and `after` is what the blocking
++/// `pick_save` would have run with it.
++pub(crate) struct PendingSave {
++    rx: Receiver<Option<String>>,
++    after: Box<dyn FnOnce(&mut SheetApp, &str)>,
++}
++
++impl SheetApp {
++    /// Whether a save dialog is open (its answer hasn't arrived yet).
++    pub fn save_dialog_open(&self) -> bool {
++        self.pending_save.is_some()
++    }
++
++    /// Ask for a path to save to, and do `after` with it: straight away for a blocking host dialog,
++    /// on a later frame for an asynchronous one.
++    ///
++    /// Returns false when the host has neither, which is how a caller knows to fall back to its
++    /// browser-download path — and only then, because a host with a picker must never be handed
++    /// bytes it cannot name.
++    pub(crate) fn ask_save(&mut self, suggested: &str, after: impl FnOnce(&mut SheetApp, &str) + 'static) -> bool {
++        // One dialog at a time: the app has one pending action, and while it is waiting the answer
++        // to it decides what happens.
++        if self.pending_save.is_some() {
++            return true;
++        }
++        if let Some(pick) = &self.services.pick_save {
++            if let Some(path) = pick(suggested) {
++                after(self, &path);
++            }
++            return true;
++        }
++        let Some(ask) = &self.services.pick_save_async else {
++            return false;
++        };
++        self.pending_save = Some(PendingSave { rx: ask(suggested), after: Box::new(after) });
++        true
++    }
++
++    /// Use the answer, once there is one. Called every frame from [`SheetApp::logic`].
++    pub(crate) fn poll_save(&mut self) {
++        let Some(pending) = self.pending_save.as_ref() else {
++            return;
++        };
++        match pending.rx.try_recv() {
++            Err(TryRecvError::Empty) => {}
++            Ok(answer) => {
++                let Some(PendingSave { after, .. }) = self.pending_save.take() else {
++                    return;
++                };
++                // Nothing to do with a cancelled dialog, which is what an empty answer is.
++                if let Some(path) = answer {
++                    after(self, &path);
++                }
++            }
++            // The host went away without answering (its sender was dropped): a cancellation, not a
++            // dialog this app will wait on for ever.
++            Err(TryRecvError::Disconnected) => self.pending_save = None,
++        }
++    }
++}
