@@ -89,12 +89,13 @@ AutoSum wrote there; only the number format follows the data. An unformatted ran
 rather than having a format invented for it, and the single-cell case takes the format of the range
 above.
 
-Three unit tests were added beside it in `crates/engine/src/tests.rs`
-(`auto_sum_total_follows_the_column_number_format`,
+Four unit tests sit beside it in `crates/engine/src/tests.rs` —
+`auto_sum_total_follows_the_column_number_format`,
 `auto_sum_total_stays_general_for_unformatted_numbers`,
-`auto_sum_single_cell_uses_the_format_of_the_range_above`), plus one for the Format Painter
-(`format_painter_picks_up_and_applies_to_a_target_range`). Run them with
-`cargo test -p gridcraft-engine`.
+`auto_sum_single_cell_uses_the_format_of_the_range_above` and, for the Format Painter,
+`format_painter_picks_up_and_applies_to_a_target_range`. **Checked:** in the assembled tree,
+`cargo test -p gridcraft-engine` passes **4/4** for these, and the whole engine lib suite passes
+**207/207**.
 
 **Note:** §5 and §6 are fixes to the spreadsheet engine, not to Android — they are in this repository
 because they were found while using the port. They are candidates for upstream.
@@ -132,7 +133,7 @@ because they were found while using the port. They are candidates for upstream.
 
 ## Not verified here
 
-The APK in Releases was not re-run on a device while publishing this repository, and the four new
-engine tests were added rather than shown passing here — run `cargo test -p gridcraft-engine` in the
-assembled tree. The runtime fixes above came from the porter's hand-testing on an arm64 tablet; there
+The APK in Releases was not re-run on a device while publishing this repository. The engine tests
+*were* run here (`cargo test -p gridcraft-engine` in the assembled tree: 207 passed, 0 failed), but no
+device test. The runtime fixes above came from the porter's hand-testing on an arm64 tablet; there
 is no automated device test in this repository.
