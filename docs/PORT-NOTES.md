@@ -5,7 +5,7 @@ Upstream: [`storytold/gridcraft`](https://github.com/storytold/gridcraft) @
 Published APK: `gridcraft-0.5.0-arm64-v8a-v3.apk`
 
 The port is `apps/gridcraft-android/` (`src/lib.rs` 462 lines, `src/file_picker.rs` 403,
-`src/modifiers.rs` 92, `src/prefs_watch.rs` 134) plus **7 upstream files** — a save-dialog seam
+`src/modifiers.rs` 202, `src/prefs_watch.rs` 134) plus **7 upstream files** — a save-dialog seam
 (`save_dialogs.rs`, new) and two spreadsheet bugs that surfaced while using the port, one of which
 (`AutoSum`) is not Android-specific at all.
 
@@ -202,6 +202,21 @@ The USB tip became folder-dependent for the same reason — Android 11+ hides `A
 so a file copied there over a cable never arrives and the folder merely looks empty (which reads as a
 picker bug), while `Android/media` *is* reachable over a cable. Saying the wrong one of those two is
 worse than saying nothing.
+## 2026-10-13 — Ctrl shortcuts: the tracker reads the physical key too
+
+### Fixed
+- **Ctrl+anything did nothing, while Shift+click and Shift+arrow worked.** winit's Android
+  logical-key table names `Shift` and `Alt` but **not** `Control` — so a Ctrl press arrives with an
+  unidentified *logical* key (egui-winit falls back to the physical one) while its physical key is
+  correctly `ControlLeft`/`ControlRight`. `src/modifiers.rs` matched the logical key alone, so it
+  never saw Ctrl go down: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+B and every other modifier shortcut
+  was dead, and only the modifiers winit happens to name worked. The tracker now reads the physical
+  key as well as the logical one, on both left and right, and keeps everything else: the per-event
+  modifier copies (so a press and a click in one frame stay ordered) and `ModifiersChanged` as the
+  authority (so a modifier held while the app goes to the background does not stick).
+  The same tracker is in all four ports of this set; it is verified end-to-end in WordCraft
+  (`Ctrl+A` selects the text, `Ctrl+B` emboldens it). This app's own shortcuts are the tablet check.
+
 ## What is deliberately *not* in the patch
 
 `Cargo.lock` is excluded on purpose: it moves only because the port crate is a new workspace member,
@@ -210,7 +225,7 @@ and `cargo` regenerates it on the first build. The patch contains only changes t
 
 ## Not verified here
 
-The APK attached to **v0.1.1** was built from exactly this tree on 2026-10-13 (upstream pin + the patch + the port crate), and the checks in the README's verification table were run against it. What that does *not* buy is a runtime claim: it was not launched on a device or emulator as part of publishing, so every behavioural statement below rests on the hand-testing the porter did on an arm64 tablet. The engine tests
+The APK attached to **v0.1.2** was built from exactly this tree on 2026-10-13 (upstream pin + the patch + the port crate), and the checks in the README's verification table were run against it. What that does *not* buy is a runtime claim: it was not launched on a device or emulator as part of publishing, so every behavioural statement below rests on the hand-testing the porter did on an arm64 tablet. The engine tests
 *were* run here (`cargo test -p gridcraft-engine` in the assembled tree: 207 passed, 0 failed), but no
 device test. The runtime fixes above came from the porter's hand-testing on an arm64 tablet; there
 is no automated device test in this repository.

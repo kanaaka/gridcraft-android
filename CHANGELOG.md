@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.2 — 2026-10-13 (Ctrl shortcuts)
+
+| | |
+|---|---|
+| APK | `gridcraft-0.5.0-arm64-v8a-20261013b.apk` (11.1 MB) — supersedes the v0.1.1 asset, same signing key |
+| sha256 | `930bec5b49369e12579d2b4e2f299f71df07fb28a7ce08932f1fc8d7005b645f` |
+| Built from | upstream `storytold/gridcraft` @ `a5137872c15fac7bf260fa2d25ea8f7e66b19dc2` + this repository at the commit that released it |
+| Package | `ai.storyteller.gridcraft` — versionName `0.5.0`, versionCode `16778496`, minSdk 26, targetSdk 35 |
+| ABI | `arm64-v8a` only |
+
+### Fixed
+- **Ctrl+anything did nothing, while Shift+click and Shift+arrow worked.** winit's Android
+  logical-key table names `Shift` and `Alt` but **not** `Control` — so a Ctrl press arrives with an
+  unidentified *logical* key (egui-winit falls back to the physical one) while its physical key is
+  correctly `ControlLeft`/`ControlRight`. `src/modifiers.rs` matched the logical key alone, so it
+  never saw Ctrl go down: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+B and every other modifier shortcut
+  was dead, and only the modifiers winit happens to name worked. The tracker now reads the physical
+  key as well as the logical one, on both left and right, and keeps everything else: the per-event
+  modifier copies (so a press and a click in one frame stay ordered) and `ModifiersChanged` as the
+  authority (so a modifier held while the app goes to the background does not stick).
+  The same tracker is in all four ports of this set; it is verified end-to-end in WordCraft
+  (`Ctrl+A` selects the text, `Ctrl+B` emboldens it). This app's own shortcuts are the tablet check.
+
 ## v0.1.1 — 2026-10-13 (scrolling, modifiers, fonts, picker wording)
 
 | | |
