@@ -8,8 +8,8 @@ and egui interface, packaged as a NativeActivity APK for sideloading on arm64 de
 | Upstream project | [`storytold/gridcraft`](https://github.com/storytold/gridcraft) — Apache-2.0 OR MIT |
 | Pinned commit | `a513787` (upstream version `0.5.0`) |
 | Android package | `ai.storyteller.gridcraft` |
-| Published APK | `gridcraft-0.5.0-arm64-v8a-v3.apk` — 11.0 MB, arm64-v8a, signed |
-| APK sha256 | `f9439c0c7e47db3ecf240e7ceee016f3bcad711051d29ab7fb4a670231b376e7` |
+| Published APK | `gridcraft-0.5.0-arm64-v8a-20261013.apk` — 11.1 MB, arm64-v8a, signed (release **v0.1.1**, 2026-10-13) |
+| APK sha256 | `a2012e67571d098a2c39834f6683040b0269cb4da516d3fa7dbd163be92683ae` |
 | Upstream files changed | 7 files (1 of them new) — see [`patches/`](patches/) |
 | New port crate | `apps/gridcraft-android/` — 1091 lines of Rust plus resources |
 
@@ -73,9 +73,10 @@ A tick means the check was *run*, not inferred; the wording says how far it goes
 | Claim | How it was checked | Result |
 |---|---|---|
 | `patches/…patch` applies to a clean checkout of the pin | fresh `git init` + `git fetch --depth 1 origin a5137872c15fac7bf260fa2d25ea8f7e66b19dc2` + `git apply --check` | ✅ applies cleanly |
-| The assembled tree equals the tree the APK was built from | file-by-file SHA-256 (line endings normalised) over every patched file and every file of the port crate | ✅ 18 files identical, none differing |
+| The assembled tree equals the tree the APK was built from | file-by-file SHA-256 (line endings normalised) over every patched file and every file of the port crate | ✅ 12 files identical, none differing |
 | The port crate compiles for Android | `cargo check -p gridcraft-android --target aarch64-linux-android`, run in a tree assembled from scratch (fresh `git fetch` of the pin, patch applied, port crate copied in) | ✅ exit 0 |
 | AutoSum number-format and Format Painter fixes | `cargo test -p gridcraft-engine` (host) | ✅ 4/4 pass; the whole engine lib suite passes 207/207 |
+| The port crate's own tests | `cargo test -p gridcraft-android` in the freshly assembled tree | ✅ 3/3 pass |
 | APK is signed and is the right artifact | `apksigner verify --verbose`, `aapt2 dump badging`, sha256 | ✅ v2/v3 signatures true, `native-code: 'arm64-v8a'`, package `ai.storyteller.gridcraft` |
 | Behaviour on real hardware | hand-testing on the porter's arm64 tablet | ⚠️ the fixes below were found and driven by that testing; each published binary is not individually re-verified here |
 

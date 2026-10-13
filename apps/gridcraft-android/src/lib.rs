@@ -85,6 +85,7 @@ use gridcraft_ui_egui::{Inbox, Services, SheetApp, UiState};
 mod file_picker;
 mod modifiers;
 mod prefs_watch;
+mod touch_scroll;
 
 /// The app's private data directory, captured in `android_main` before any service closure runs:
 /// `<internal storage>/Android/data/ai.storyteller.gridcraft/files`.
@@ -353,6 +354,9 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
         let _ = std::fs::create_dir_all(&ext);
         let _ = file_picker::EXT_DIR.set(ext);
     }
+    // Fonts: a folder the user can drop a font file into over USB, pointed at where this app's font
+    // scan looks (see `file_picker::register_fonts`).
+    file_picker::register_fonts();
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_title("GridCraft").with_app_id("ai.storyteller.gridcraft"),
@@ -380,6 +384,7 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
                 inner: app,
                 notices,
                 modifiers: modifiers::Tracked::default(),
+                touch: touch_scroll::TouchScroll::default(),
                 prefs_ui: prefs_watch::Writer::new(ui_path, PREFS_EVERY),
                 prefs_engine: prefs_watch::Writer::new(engine_path, PREFS_EVERY),
             }))
@@ -405,6 +410,8 @@ struct Shell {
     /// backend sends no `ModifiersChanged` at all, which is why Shift+click and every Ctrl
     /// shortcut are dead without this (see `modifiers`).
     modifiers: modifiers::Tracked,
+    /// Two-finger scrolling, translated from touches into wheel events (see [`touch_scroll`]).
+    touch: touch_scroll::TouchScroll,
     /// The preferences, written as the app runs rather than only on the way out: Android never
     /// gives that ending, so a swipe from Recents would otherwise take every preference with it
     /// (see [`prefs_watch`]). One writer per file, because they are two files.
@@ -443,7 +450,11 @@ impl eframe::App for Shell {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         // Before the app, so the frame it sees already has the modifiers a desktop backend would
         // have reported (see `modifiers`).
-        self.modifiers.apply(raw);
+        let modifiers = self.modifiers.apply(raw);
+        // Then the touches: winit's Android backend has no mouse and so sends no wheel events at
+        // all, which is why nothing scrolled. A two-finger drag becomes one here (see
+        // `touch_scroll`).
+        self.touch.apply(raw, modifiers);
         self.inner.raw_input_hook(raw);
     }
 
