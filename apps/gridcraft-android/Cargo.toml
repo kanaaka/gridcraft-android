@@ -7,17 +7,23 @@ rust-version.workspace = true
 description = "GridCraft on Android: the real engine and egui shell on winit's NativeActivity backend"
 publish = false
 
-# cargo-apk turns this cdylib into the APK's lib/arm64-v8a/libgridcraft.so, and the artifact name
-# is what the injected `android.app.lib_name` meta-data points at (with `-` → `_`). A mismatch
-# yields an APK that installs and then dies on launch, so the lib name is deliberate — the same
-# shape `apps/vectorcraft-android` and `apps/wordcraft-android` use.
+# cargo-apk turns this cdylib into the APK's lib/arm64-v8a/<name>.so and points the injected
+# `android.app.lib_name` meta-data at the same string. It derives that string from the *package*
+# name (`-` → `_`), not from `[lib] name`: a library called `gridcraft` builds `libgridcraft.so`
+# while the manifest asks NativeActivity for `libgridcraft_android.so`, and packaging stops at
+# `…/libgridcraft_android.so doesn't exist` (or the APK installs and dies on launch). Keep this
+# equal to the package's `-`→`_` form; `scripts/verify-apk.sh` checks the manifest value against
+# the packaged library.
 [lib]
-name = "gridcraft"
+name = "gridcraft_android"
 crate-type = ["cdylib"]
 
 # Omit `[lints] workspace = true`: the workspace forbids unsafe_code, which trips on the
 # `#[unsafe(no_mangle)]` entry point this crate needs, and nothing else here wants the lints.
 [dependencies]
+# `jni` is the same 0.22 android-activity itself depends on, so this unifies rather than
+# compiling a second JNI layer. Used by storage access and Android's *Open with* inbox.
+jni = "0.22"
 gridcraft-engine = { workspace = true }
 gridcraft-ui-egui = { workspace = true }
 egui = { workspace = true }
@@ -59,6 +65,10 @@ target_sdk_version = 35
 
 [package.metadata.android.application]
 label = "GridCraft"
+# cargo-apk packages native code only; the Java Activity this crate carries is compiled into
+# classes.dex by `scripts/build-apk.ps1` and merged before signing. `has_code` is what tells
+# Android there is a DEX inside — without it the Activity cannot be instantiated.
+has_code = true
 # Variant B (immersive fullscreen) is what fixed the menu bar sitting under the notification bar
 # on the tablet; variant A is the alternative — see res/values/styles.xml.
 theme = "@style/GridcraftFullscreen"
@@ -74,8 +84,41 @@ extract_native_libs = true
 # keeps running against a dead Activity while a second one starts — the app hangs, then is killed.
 # cargo-apk's default is only `orientation|keyboardHidden|screenSize`; these are the ones a
 # fullscreen, resizable native app handles itself.
+#
+# `singleTop` is what makes a second *Open with* land in this Activity's `onNewIntent` instead of
+# stacking another Activity: the paperwork is imported by the one already drawing.
 [package.metadata.android.application.activity]
+name = "ai.storyteller.gridcraft.GridcraftActivity"
+launch_mode = "singleTop"
 config_changes = "orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|density|uiMode|fontScale|keyboard|navigation|touchscreen"
+
+# Android's *Open with* and "set as default" need an exported activity with ACTION_VIEW and
+# CATEGORY_DEFAULT for every document type the engine reads. A filter with only `mimeType`
+# matches the `content:` and `file:` schemes — the two a file manager hands over — and does not
+# claim web links.
+#
+# The list is the engine's own formats: xlsx/xltx, xlsm/xltm, xlsb, xls, ods, csv/tsv, txt and
+# json. `application/octet-stream` is the catch-all some file managers report; GridCraft sniffs
+# the bytes and rejects what it cannot read instead of opening a garbage workbook.
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.VIEW"]
+categories = ["android.intent.category.DEFAULT"]
+data = [
+    { mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+    { mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.template" },
+    { mime_type = "application/vnd.ms-excel.sheet.macroEnabled.12" },
+    { mime_type = "application/vnd.ms-excel.template.macroEnabled.12" },
+    { mime_type = "application/vnd.ms-excel.sheet.binary.macroEnabled.12" },
+    { mime_type = "application/vnd.ms-excel" },
+    { mime_type = "application/vnd.oasis.opendocument.spreadsheet" },
+    { mime_type = "text/csv" },
+    { mime_type = "text/comma-separated-values" },
+    { mime_type = "application/csv" },
+    { mime_type = "text/tab-separated-values" },
+    { mime_type = "text/plain" },
+    { mime_type = "application/json" },
+    { mime_type = "application/octet-stream" },
+]
 
 
 [[package.metadata.android.uses_feature]]

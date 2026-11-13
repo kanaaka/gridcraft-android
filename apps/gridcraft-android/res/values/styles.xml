@@ -31,6 +31,12 @@
     -->
     <style name="GridcraftStatusBar" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+        <!-- `windowSoftInputMode` has no home in cargo-apk's manifest schema, and none is needed:
+             it is a *themeable* attribute, so the theme can carry it. `adjustResize` asks the
+             system to shrink the window for the on-screen keyboard instead of drawing it over the
+             grid — which matters far more in a spreadsheet than in a text document, because the
+             cell being edited sits under the keyboard. -->
+        <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
 
     <!--
@@ -49,6 +55,12 @@
     -->
     <style name="GridcraftFullscreen" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
         <item name="android:windowFullscreen">true</item>
+        <!-- See the note in GridcraftStatusBar: `adjustResize` asks the system to shrink the
+             window for the keyboard and the taskbar instead of drawing them over the app. On
+             Android 15 it is not enough on its own — targeting SDK 35 puts the app in charge of
+             the insets and nothing consumes them — but it is the right thing to ask for, and other
+             Android versions do act on it. -->
+        <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
 
 </resources>
