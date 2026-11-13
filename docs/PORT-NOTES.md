@@ -2,10 +2,12 @@
 
 Upstream: [`storytold/gridcraft`](https://github.com/storytold/gridcraft) @
 `a5137872c15fac7bf260fa2d25ea8f7e66b19dc2` (v0.5.0)
-Published APK: `gridcraft-0.5.0-arm64-v8a-v3.apk`
+Published APK: `gridcraft-0.5.0-arm64-v8a-v3.apk`; local fixed APK (2026-11-13):
+`gridcraft-0.5.0-arm64-v8a-files-ru.apk`
 
-The port is `apps/gridcraft-android/` (`src/lib.rs` 462 lines, `src/file_picker.rs` 403,
-`src/modifiers.rs` 202, `src/prefs_watch.rs` 134) plus **7 upstream files** — a save-dialog seam
+The port is `apps/gridcraft-android/` (`src/lib.rs`, `src/file_picker.rs`, `src/permissions.rs`,
+`src/android_files.rs`, `src/modifiers.rs`, `src/prefs_watch.rs`, `src/touch_scroll.rs`, the Java
+Activity, and resources) plus **7 upstream files** — a save/open-dialog seam
 (`save_dialogs.rs`, new) and two spreadsheet bugs that surfaced while using the port, one of which
 (`AutoSum`) is not Android-specific at all.
 
@@ -15,15 +17,18 @@ The port is `apps/gridcraft-android/` (`src/lib.rs` 462 lines, `src/file_picker.
 is the third host to fill it, after the desktop binary and the browser shell. Load-bearing in every
 port of this set:
 
-- **`[lib] name = "gridcraft"` + `crate-type = ["cdylib"]`** → `lib/arm64-v8a/libgridcraft.so`, and the
-  injected `android.app.lib_name` is that artifact name with `-` → `_`. A mismatch installs and then
+- **`[lib] name = "gridcraft_android"` + `crate-type = ["cdylib"]`** → `lib/arm64-v8a/libgridcraft_android.so`, and the
+  injected `android.app.lib_name` is that same name. cargo-apk 0.9.7 derives the name from the
+  **package** (`gridcraft-android` → `gridcraft_android`), not from `[lib] name`, so the target has
+  to match: with a library called `gridcraft`, packaging stops at
+  `…/libgridcraft_android.so doesn't exist`. A mismatch that does get packaged installs and then
   dies on launch.
 - **`options.android_app = Some(app)`** — `eframe::run_native` errors without it.
 - **A file logger in the app's own data directory** (`logcat` needs adb; a sideloaded build has none).
 - **Preferences under `internal_data_path()`**: `ui.json` (the recent-documents list) and `prefs.json`,
   written while the app runs (§3).
 
-## 2. Save dialogs that do not hold the frame (`pick_save_async` + `save_dialogs.rs`)
+## 2. Dialogs that do not hold the frame (`pick_save_async`/`pick_open_async` + `save_dialogs.rs`)
 
 `Services::pick_save` is the *blocking* shape: the host shows a panel and returns the chosen path in
 the same call. That works on the desktop (`rfd`) and cannot work on a host that draws its own picker
@@ -37,9 +42,11 @@ closing prompts to save what was just saved. That is the first thing a user noti
 So the upstream patch adds the asynchronous seam: `Services::pick_save_async(&str) ->
 Receiver<Option<String>>` (the host returns a receiver, an empty answer means cancelled), and a new
 `crates/ui-egui/src/save_dialogs.rs` holding the pending save and the work to run when the path
-arrives on a later frame. **Every** save dialog in the app goes through `SheetApp::ask_save`, so the
+arrives on a later frame. Its sibling `Services::pick_open_async() -> Receiver<Option<String>>` does
+the same for Open (see *Open answers with a path* below). **Every** save dialog in the app goes
+through `SheetApp::ask_save`, so the
 path can never be dropped on the floor. `poll_save()` runs from the frame loop, so what asked executes
-on the frame the answer lands.
+on the frame the answer lands; `poll_open()` opens the answer's path the same way.
 
 Two callers had their own reason to change:
 
@@ -124,7 +131,7 @@ because they were found while using the port. They are candidates for upstream.
 | File | Change | Why |
 |---|---|---|
 | `crates/ui-egui/src/save_dialogs.rs` | **new** — pending save + what to run when the path arrives | a host that draws its own picker cannot return a path in the same call (§2) |
-| `crates/ui-egui/src/lib.rs` | `Services::pick_save_async`, `pending_save`, `ask_save`, `poll_save`; Save As asks asynchronously; recent list updated on save | §2, §4 |
+| `crates/ui-egui/src/lib.rs` | `Services::pick_save_async` + `Services::pick_open_async`, `pending_save`/`pending_open`, `ask_save`/`poll_save`/`poll_open`; Save As and Open ask asynchronously; recent list updated on save | §2, §4, and *Open answers with a path* |
 | `crates/ui-egui/src/backstage.rs` | export asks and writes on the answer frame; the "web" detection fixed | §2 |
 | `crates/ui-egui/src/dialogs.rs` | the Copy/export dialog asks asynchronously when no name was typed | §2 |
 | `crates/ui-egui/src/grid.rs` | Format Painter applied on click and on drag | §5 |
@@ -202,6 +209,93 @@ The USB tip became folder-dependent for the same reason — Android 11+ hides `A
 so a file copied there over a cable never arrives and the folder merely looks empty (which reads as a
 picker bug), while `Android/media` *is* reachable over a cable. Saying the wrong one of those two is
 worse than saying nothing.
+
+
+## 2026-11-13 — Shared storage is asked for, and the picker speaks Russian
+
+**The complaint:** every folder outside the app's own was padlocked, a padlocked folder was a
+disabled button, and Open always started in the app folder. The tablet's workbooks were never on
+screen, and there was no way to change that from inside the app.
+
+**Why:** `MANAGE_EXTERNAL_STORAGE` is declared in the manifest but is a *special access*, not a
+runtime permission: the system never prompts for it, and the toggle lives behind a Settings screen
+the app has to open itself. Nothing opened it. A successful `read_dir` is not proof of access
+either — scoped storage can return an empty listing instead of an error — so the picker has to
+inspect the grant, not the folder.
+
+**The change:**
+
+- `src/permissions.rs` (new) probes the grant (`Environment.isExternalStorageManager` on API 30+,
+  `checkSelfPermission` before that), caches the answer for a second so grants/revocations made in
+  the background are noticed, and asks the Activity to show the right system screen
+  (`ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`, with the app-details page as a fallback; the
+  ordinary storage dialog below API 30).
+- `GridcraftActivity.requestStorageAccess()` posts that to Android's main thread — the render
+  thread cannot open a permission screen.
+- `src/file_picker.rs` asks once per process when the first dialog appears, keeps an **Allow file
+  access** banner while shared storage is unreadable, makes a padlocked root tappable, starts Open
+  in `Documents`/`Download` once they are readable, derives the storage root from
+  `external_data_path()` (so a secondary user or an adopted SD card works), lists removable volumes,
+  and adds **Show all files** for the extension filter.
+- Every label and dialog title follows the editor's interface language through
+  `gridcraft_ui_egui::i18n`; Russian is complete, including the permission banner and the failure
+  notices in `lib.rs`.
+- Both themes carry `windowSoftInputMode=adjustResize`: a spreadsheet's edit box sits under the
+  on-screen keyboard, so system resizing matters more here than in a text document.
+
+**Checked:** `cargo test -p gridcraft-android` covers Russian rendering of both dialogs (the
+window's text shapes are inspected without a GPU), uppercase/Unicode filenames, and the storage
+root derivation.
+
+## 2026-11-13 — Open answers with a path (`pick_open_async`)
+
+Before this, File ▸ Open used the browser seam: the picked file arrived as `(name, bytes)` in the
+inbox and `file.open` was called without a path. The workbook opened, but the title bar stayed
+`Book1`, Recent did not learn the file, `Ctrl+S` asked for a location again, and closing prompted
+to save what had just been saved.
+
+The patch adds the sibling of `pick_save_async`:
+
+- `Services::pick_open_async: Option<Box<dyn Fn() -> Receiver<Option<String>>>>` — a host that draws
+  its own picker answers on a later frame; `None` is a cancellation.
+- `SheetApp::open_dialog("open")` prefers it, keeps one dialog at a time, and `poll_open()` (called
+  from `logic`, beside `poll_save`) runs `open_path` on the frame the path arrives.
+- The shell supplies it and leaves `open_async` unset, so `inbox` is not used for workbooks at all.
+  The picture path still speaks in bytes, which is what it wants.
+
+**Checked:** a unit test answers the Open dialog with a real `.xlsx` on the next frame and asserts
+the active document's `path`; another opens a workbook through the Activity's route and asserts the
+unsaved workbook survives in its own tab.
+
+## 2026-11-13 — Android *Open with*, and becoming the default
+
+The Activity now declares ACTION_VIEW + CATEGORY_DEFAULT for every spreadsheet format the engine
+reads: xlsx/xltx, xlsm/xltm, xlsb, xls, ods, csv/tsv, text and json, plus `application/octet-stream`.
+A filter with only MIME types matches `content:` and `file:` URIs without claiming web links. The
+user chooses *Always* in Android's chooser to make GridCraft the default.
+
+`GridcraftActivity` (new, packaged as `classes.dex`) handles `onCreate` and `onNewIntent`
+(`launchMode=singleTop`). A readable `file:` URI is passed through as its original path; a
+`content:` URI is copied into `Imported/<uuid>/<name>` on a single ordered worker while the
+temporary read grant is valid, so a slow provider cannot lose the file. Names are sanitised and
+keep Unicode and the extension; a missing extension is filled from the MIME type.
+Rust polls `takeOpenedDocument()` while no dialog is open (`src/android_files.rs`) and opens the
+result through `SheetApp::open_path`. GridCraft is multi-document, so the workbook arrives in a
+tab of its own and unsaved work is untouched — the WordCraft prompt it needs does not apply here.
+
+## 2026-11-13 — The packaging grows a Java step, and the library name is fixed
+
+`cargo-apk` packages native code and resources only. `scripts/build-apk.ps1` now runs
+`javac`/`d8` for the Activity, then `scripts/package-bridge.py` rebuilds the resource package with
+`aapt`, adds `hasCode`, `requestLegacyExternalStorage`, `versionCode`/`versionName` and the
+lower-case MIME spellings, merges `classes.dex` and the native library, aligns and signs.
+
+That build also exposed a stale assumption: cargo-apk 0.9.7 derives the packaged `.so` name and
+`android.app.lib_name` from the **package** name (`gridcraft-android` → `gridcraft_android`), not
+from `[lib] name`. With the old `gridcraft` target the build stopped at
+`…/libgridcraft_android.so doesn't exist`; the target is now `gridcraft_android` and the packaged
+library is `lib/arm64-v8a/libgridcraft_android.so`.
+
 ## 2026-10-13 — Ctrl shortcuts: the tracker reads the physical key too
 
 ### Fixed
@@ -225,7 +319,7 @@ and `cargo` regenerates it on the first build. The patch contains only changes t
 
 ## Not verified here
 
-The APK attached to **v0.1.2** was built from exactly this tree on 2026-10-13 (upstream pin + the patch + the port crate), and the checks in the README's verification table were run against it. What that does *not* buy is a runtime claim: it was not launched on a device or emulator as part of publishing, so every behavioural statement below rests on the hand-testing the porter did on an arm64 tablet. The engine tests
+The APK **v0.1.2** was built from exactly this tree on 2026-10-13 (upstream pin + the patch + the port crate), and the checks in the README's verification table were run against it. The local APK **0.5.0-files-ru.1** (2026-11-13) was likewise built from the pinned tree plus this patch plus the port crate; the source-side checks in the README were re-run against it (patch applies cleanly, assembled tree equals the build tree, 11/11 shell tests, Android `cargo check`, manifest/DEX/APK inspection). What none of that buys is a runtime claim: it was not launched on a device or emulator as part of publishing, so every behavioural statement rests on the hand-testing the porter did on an arm64 tablet. The engine tests
 *were* run here (`cargo test -p gridcraft-engine` in the assembled tree: 207 passed, 0 failed), but no
-device test. The runtime fixes above came from the porter's hand-testing on an arm64 tablet; there
+device test. The runtime fixes above came from testing on this suite's arm64 tablet; there
 is no automated device test in this repository.

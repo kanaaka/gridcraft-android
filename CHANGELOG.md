@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.5.0-files-ru.3 — 2026-11-13
+
+- Возвращён исходный встроенный выбор файлов для открытия и вставки рисунков.
+  Системный выбор документов не вызывается.
+- Фильтр содержит все 14 расширений движка, включая XLTX/XLTM, XLT, TAB и SCJSON;
+  регистр и русские имена файлов не влияют на отображение. Начальная папка выбирается
+  по наличию совместимых документов, переходы запоминаются до закрытия окна приложения.
+- Закрытые общие папки больше не выглядят доступными только из-за успешного read_dir.
+  Java проверяет фактический доступ Android, включая legacy storage на Android 10.
+- «Открыть с помощью» принимает content/file URI с любым MIME и без MIME, VIEW/EDIT,
+  а также SEND/SEND_MULTIPLE через EXTRA_STREAM и ClipData.
+- singleTask предотвращает создание второго NativeActivity из штатного менеджера
+  HONOR и выводит существующий редактор с открытым файлом на передний план.
+- Завершён перевод названий команд, вложенных меню, сводных таблиц, палитр,
+  параметров диаграмм, подсказок и статистики выделения; поиск команд работает по-русски.
+- 13 тестов оболочки и 65 тестов интерфейса проходят. Добавлены проверки всех
+  расширений, начальной папки и русских подписей каждой команды движка.
+
+APK: `gridcraft-0.5.0-arm64-v8a-files-ru3.apk`, versionCode `16778502`.
+Ключ подписи совпадает с files-ru.2.
+Проверено на HONOR MLA-W09 с Android 16: встроенное открытие, X-plore, штатные «Файлы»,
+холодный и повторный запуск, SEND; 16/16 проверок Android resolver проходят.
+Проверки на планшете: [docs/BUILTIN-PICKER-RU3.md](docs/BUILTIN-PICKER-RU3.md).
+
+## 0.5.0-files-ru.1 — 2026-11-13 (file access, Open with, Russian picker)
+
+| | |
+|---|---|
+| APK | `gridcraft-0.5.0-arm64-v8a-files-ru.apk` (11,625,340 bytes) |
+| sha256 | `042fcc9329d96f79a97405fff041d1265e82bbb85770c5472fb9b0750538248c` |
+| Built from | upstream `storytold/gridcraft` @ `a5137872c15fac7bf260fa2d25ea8f7e66b19dc2` + this repository at the commit that released it |
+| Package | `ai.storyteller.gridcraft` — versionName `0.5.0-files-ru.1`, versionCode `16778500`, minSdk 26, targetSdk 35 |
+| ABI | `arm64-v8a` only |
+| Signature | **new** throwaway local test key (`gridcraft-sideload.keystore`) — uninstall any earlier local APK first |
+
+### Fixed
+- **The picker could not see shared storage and never asked for it.** "All files access"
+  (`MANAGE_EXTERNAL_STORAGE`) is declared but is not a runtime permission: the app has to open the
+  system screen itself. The new `src/permissions.rs` detects the grant (`isExternalStorageManager()`
+  on Android 11+, `checkSelfPermission` before that) and the Java Activity opens the right screen on
+  the UI thread. The picker asks once per process, keeps an **Allow file access** button, makes a
+  padlocked folder tappable, starts Open in `Documents`/`Download` once readable, follows the
+  device's actual storage root and lists removable volumes. Startup logs whether access is granted.
+- **Open lost the workbook's path.** Opening through the picker now runs `file.open` with the
+  original path — a new upstream `pick_open_async` seam, the sibling of `pick_save_async` — so the
+  title bar, Recent and Ctrl+S know which file is open.
+- **GridCraft was absent from *Open with*.** The Activity advertises ACTION_VIEW +
+  CATEGORY_DEFAULT for xlsx/xltx, xlsm/xltm, xlsb, xls, ods, csv/tsv, txt and json plus
+  `application/octet-stream`; a file manager's file opens on a cold start or in the running window
+  (`singleTop`). Content URIs are copied on a worker before their temporary grant expires; a
+  readable `file:` URI is opened in place. An incoming workbook opens in its own tab, so unsaved
+  work is not closed.
+- **The picker was English only.** Its labels and the dialog titles now follow the editor's
+  interface language; Russian is complete, including the permission banner and failure notices.
+  Save/Open also gained **Show all files**.
+- **`cargo apk build` failed with current cargo-apk.** It derives the packed library and
+  `android.app.lib_name` from the package name, so `[lib] name` is now `gridcraft_android`; the
+  packaged library is `lib/arm64-v8a/libgridcraft_android.so`.
+- **The keyboard was drawn over the grid.** Both themes carry `windowSoftInputMode=adjustResize`,
+  which matters more in a spreadsheet than in a text document: the cell being edited sits under
+  the keyboard.
+
+### Packaging
+`scripts/build-apk.ps1` now completes the build: cargo-apk's native APK plus `javac`/D8 for
+`GridcraftActivity`, Android 10 legacy-storage opt-out, `hasCode`, version bump, resource rebuild
+with `aapt`, ZIP alignment and signing. `scripts/package-bridge.py` does the manifest/DEX merge.
+All 11 shell tests pass; the patch applies to a clean checkout and the assembled tree matches the
+build workspace. Not run on a physical device from this machine.
+
 ## v0.1.2 — 2026-10-13 (Ctrl shortcuts)
 
 | | |

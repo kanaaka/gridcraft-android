@@ -1,5 +1,5 @@
 diff --git a/crates/engine/src/cmd/formulas.rs b/crates/engine/src/cmd/formulas.rs
-index df48a2c..3ddf4a3 100644
+index df48a2c1..3ddf4a35 100644
 --- a/crates/engine/src/cmd/formulas.rs
 +++ b/crates/engine/src/cmd/formulas.rs
 @@ -1,7 +1,7 @@
@@ -97,7 +97,7 @@ index df48a2c..3ddf4a3 100644
      match str_param(p, "name") {
          Some(n) => {
 diff --git a/crates/engine/src/tests.rs b/crates/engine/src/tests.rs
-index c9f4d0a..362101d 100644
+index c9f4d0aa..362101d6 100644
 --- a/crates/engine/src/tests.rs
 +++ b/crates/engine/src/tests.rs
 @@ -1440,6 +1440,64 @@ fn fmt_of(s: &Session, a: &str) -> String {
@@ -166,7 +166,7 @@ index c9f4d0a..362101d 100644
  fn checkboxes_keep_values_toggle_and_delete_in_two_passes() {
      // Issue #196.
 diff --git a/crates/ui-egui/src/backstage.rs b/crates/ui-egui/src/backstage.rs
-index 824b4da..ac96579 100644
+index 824b4dad..ac965790 100644
 --- a/crates/ui-egui/src/backstage.rs
 +++ b/crates/ui-egui/src/backstage.rs
 @@ -531,8 +531,10 @@ fn save_as(app: &mut SheetApp, ui: &mut Ui, bs: &mut Backstage, out: &mut Outcom
@@ -213,7 +213,7 @@ index 824b4da..ac96579 100644
      if app.services.download.is_none() {
          app.message = Some(("GridCraft".into(), "Exporting needs a file picker, which this window doesn't have.".into()));
 diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
-index c3f0ea6..d770886 100644
+index c3f0ea6e..d7708861 100644
 --- a/crates/ui-egui/src/dialogs.rs
 +++ b/crates/ui-egui/src/dialogs.rs
 @@ -1008,14 +1008,17 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
@@ -243,7 +243,7 @@ index c3f0ea6..d770886 100644
                      }
                  }
 diff --git a/crates/ui-egui/src/grid.rs b/crates/ui-egui/src/grid.rs
-index 9385edd..3e08d61 100644
+index 9385edde..3e08d612 100644
 --- a/crates/ui-egui/src/grid.rs
 +++ b/crates/ui-egui/src/grid.rs
 @@ -1836,6 +1836,12 @@ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &
@@ -276,7 +276,7 @@ index 9385edd..3e08d61 100644
              Drag::Fill { target: Some(t) } => {
                  let src = sel.current();
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 9ef0d50..b837667 100644
+index 9ef0d50b..a7b8da47 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -27,6 +27,7 @@ pub mod panes;
@@ -287,7 +287,7 @@ index 9ef0d50..b837667 100644
  pub mod selection_glide;
  pub mod tabs;
  pub mod text_box;
-@@ -156,6 +157,12 @@ pub struct Notice {
+@@ -156,6 +157,18 @@ pub struct Notice {
  pub struct Services {
      pub pick_open: Option<Box<dyn Fn() -> Option<String>>>,
      pub pick_save: Option<Box<dyn Fn(&str) -> Option<String>>>,
@@ -297,27 +297,37 @@ index 9ef0d50..b837667 100644
 +    /// the path arrives ([`save_dialogs`]); an empty answer is a cancellation. A host with this
 +    /// must be preferred over handing it finished bytes, which cannot tell the app where they went.
 +    pub pick_save_async: Option<Box<dyn Fn(&str) -> std::sync::mpsc::Receiver<Option<String>>>>,
++    /// An open dialog whose answer arrives later, for a host that draws its own picker between
++    /// frames (Android): the receiver yields the chosen path, or `None` for a cancellation. Unlike
++    /// `open_async`, the file is opened *by path*, so the workbook records its own file: the title
++    /// bar, Recent and Ctrl+S all work as they do on the desktop. Preferred over `open_async` when
++    /// both are supplied, because bytes cannot name the file they came from.
++    pub pick_open_async: Option<Box<dyn Fn() -> std::sync::mpsc::Receiver<Option<String>>>>,
      /// Native picture picker (PNG/JPEG), separate from workbook opening.
      pub pick_picture: Option<Box<dyn Fn() -> Option<String>>>,
      /// Browser picture picker. Each dialog owns its inbox, so canceled picks cannot
-@@ -205,6 +212,8 @@ pub struct SheetApp {
+@@ -205,6 +218,11 @@ pub struct SheetApp {
      /// Dismissible info bar under the ribbon (open-time notices).
      pub notice: Option<Notice>,
      pub services: Services,
 +    /// The save dialog the host is showing, and what to do with its answer ([`save_dialogs`]).
 +    pending_save: Option<save_dialogs::PendingSave>,
++    /// The open dialog the host is showing, when it answers between frames
++    /// ([`Services::pick_open_async`]).
++    pending_open: Option<std::sync::mpsc::Receiver<Option<String>>>,
      /// Synthetic input from agents, one batch per frame (drags need several frames).
      pub synthetic: std::collections::VecDeque<Vec<egui::Event>>,
      pub control_rx: Option<std::sync::mpsc::Receiver<ControlRequest>>,
-@@ -251,6 +260,7 @@ impl SheetApp {
+@@ -251,6 +269,8 @@ impl SheetApp {
              toast: None,
              notice: None,
              services,
 +            pending_save: None,
++            pending_open: None,
              synthetic: Default::default(),
              control_rx: None,
              grid: grid::GridState {
-@@ -567,6 +577,18 @@ impl SheetApp {
+@@ -567,6 +587,18 @@ impl SheetApp {
                  }
              }
          }
@@ -336,7 +346,26 @@ index 9ef0d50..b837667 100644
      }
  
      pub fn open_dialog(&mut self, name: &str, params: Json) {
-@@ -586,12 +608,16 @@ impl SheetApp {
+@@ -576,7 +608,17 @@ impl SheetApp {
+         }
+         match name {
+             "open" => {
+-                if let Some(start) = &self.services.open_async {
++                // One open dialog at a time: a second click while the picker is up must not queue
++                // another answer the app would have nowhere to put.
++                if self.pending_open.is_some() {
++                    return;
++                }
++                if let Some(ask) = &self.services.pick_open_async {
++                    // A host that draws its own picker answers between frames; the workbook is
++                    // opened by path on the frame the answer lands (see `poll_open`), so it knows
++                    // its own file — the title bar, Recent and Save all follow.
++                    self.pending_open = Some(ask());
++                } else if let Some(start) = &self.services.open_async {
+                     start();
+                 } else if let Some(pick) = &self.services.pick_open
+                     && let Some(path) = pick()
+@@ -586,12 +628,16 @@ impl SheetApp {
              }
              "saveAs" => {
                  let suggested = self.session.active().map(|d| d.display_title()).unwrap_or_else(|| "Book1".into());
@@ -359,18 +388,53 @@ index 9ef0d50..b837667 100644
                      && let Ok(r) = self.run("file.saveBytes", json!({"format": "xlsx"}))
                      && let Some(dl) = &self.services.download
                      && let Some(b) = r.get("base64").and_then(Json::as_str).and_then(gridcraft_engine::io::base64_decode)
-@@ -883,6 +909,8 @@ impl SheetApp {
+@@ -622,6 +668,32 @@ impl SheetApp {
+         }
+     }
+ 
++    /// Use the answer to an asynchronous Open dialog, once there is one. Called every frame from
++    /// [`SheetApp::logic`]. A cancelled dialog (or a host that went away) just clears the wait.
++    fn poll_open(&mut self) {
++        let answer = match self.pending_open.as_ref() {
++            None => return,
++            Some(rx) => rx.try_recv(),
++        };
++        match answer {
++            Err(std::sync::mpsc::TryRecvError::Empty) => {}
++            Ok(path) => {
++                self.pending_open = None;
++                if let Some(path) = path {
++                    let before = self.session.active().map(|d| d.uid);
++                    self.open_path(&path);
++                    // A file picked from File ▸ Open reveals itself: the Backstage the Browse
++                    // button sits in would hide the workbook it just opened. (A failed open leaves
++                    // the active document alone, and the Backstage where it was.)
++                    if self.session.active().map(|d| d.uid) != before {
++                        self.backstage = None;
++                    }
++                }
++            }
++            Err(std::sync::mpsc::TryRecvError::Disconnected) => self.pending_open = None,
++        }
++    }
++
+     pub fn open_path(&mut self, path: &str) {
+         match self.run("file.open", json!({"path": path})) {
+             Ok(r) => {
+@@ -883,6 +955,10 @@ impl SheetApp {
              ctx.set_zoom_factor(zoom);
              ctx.request_repaint();
          }
 +        // A save dialog that answered between frames: what asked runs now, with the path.
 +        self.poll_save();
++        // An open dialog that answered between frames: the workbook is opened by its own path.
++        self.poll_open();
          control::poll(self, ctx);
          // Files read asynchronously (web file picker, dropped files).
          let arrived: Vec<(String, Vec<u8>)> = self
 diff --git a/crates/ui-egui/src/save_dialogs.rs b/crates/ui-egui/src/save_dialogs.rs
 new file mode 100644
-index 0000000..a7fd36d
+index 00000000..a7fd36dc
 --- /dev/null
 +++ b/crates/ui-egui/src/save_dialogs.rs
 @@ -0,0 +1,85 @@

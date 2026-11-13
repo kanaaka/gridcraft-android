@@ -1,0 +1,56 @@
+"""Package the Java Activity into cargo-apk's native APK before final signing.
+
+cargo-apk packages native code and resources only: it has no schema for a Java Activity and does
+not run `javac`/`d8`. This script takes the manifest cargo-apk generated, adds what the Activity
+needs (`hasCode`, the Android 10 storage opt-out, a version the updater can compare), compiles the
+resources again with `aapt`, then merges the native library and `classes.dex` into that package.
+Alignment and signing happen afterwards in build-apk.ps1.
+"""
+import argparse
+from pathlib import Path
+import subprocess
+import xml.etree.ElementTree as ET
+import zipfile
+
+parser = argparse.ArgumentParser()
+for arg in ('workspace', 'port', 'stage', 'sdk'):
+    parser.add_argument('--' + arg, type=Path, required=True)
+parser.add_argument('--native-target', type=Path)
+args = parser.parse_args()
+native_target = args.native_target or args.workspace / 'target'
+android = 'http://schemas.android.com/apk/res/android'
+ET.register_namespace('android', android)
+tree = ET.parse(native_target / 'release/apk/AndroidManifest.xml')
+root = tree.getroot()
+app = root.find('application')
+assert app is not None
+app.set(f'{{{android}}}hasCode', 'true')
+# API 29 needs the opt-out even with READ/WRITE_EXTERNAL_STORAGE. Android 11+ ignores it and uses
+# the explicit all-files special-access grant instead.
+app.set(f'{{{android}}}requestLegacyExternalStorage', 'true')
+# Android's resolver matches MIME strings case-sensitively. Some file managers normalize the
+# macroEnabled MIME names; accept both spellings.
+for intent_filter in app.findall('./activity/intent-filter'):
+    for data in list(intent_filter.findall('data')):
+        mime = data.get(f'{{{android}}}mimeType')
+        if mime and mime != mime.lower():
+            ET.SubElement(intent_filter, 'data', {f'{{{android}}}mimeType': mime.lower()})
+root.set(f'{{{android}}}versionCode', '16778502')
+root.set(f'{{{android}}}versionName', '0.5.0-files-ru.3')
+manifest = args.stage / 'AndroidManifest.xml'
+tree.write(manifest, encoding='utf-8', xml_declaration=True)
+unsigned = args.stage / 'unsigned.apk'
+subprocess.run([
+    str(args.sdk / 'build-tools/35.0.0/aapt.exe'), 'package', '-f',
+    '-M', str(manifest), '-S', str(args.port / 'apps/gridcraft-android/res'),
+    '-I', str(args.sdk / 'platforms/android-35/android.jar'), '-F', str(unsigned),
+], check=True)
+with zipfile.ZipFile(native_target / 'release/apk/gridcraft.apk') as native:
+    with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED) as apk:
+        for name in native.namelist():
+            if name.startswith('lib/') and name.endswith('.so'):
+                apk.writestr(name, native.read(name))
+        apk.write(args.stage / 'dex/classes.dex', 'classes.dex')
+with zipfile.ZipFile(unsigned) as apk:
+    assert 'classes.dex' in apk.namelist()
+    assert 'lib/arm64-v8a/libgridcraft_android.so' in apk.namelist()
