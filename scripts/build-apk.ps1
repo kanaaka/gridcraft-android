@@ -1,15 +1,34 @@
 param(
     [Parameter(Mandatory=$true)][string]$Workspace,
     [string]$Sdk = 'C:\Android\sdk',
+    [string]$NativeTarget,
     [Parameter(Mandatory=$true)][string]$Keystore,
-    [string]$Output = 'gridcraft-0.5.0-arm64-v8a-files-ru.apk',
-    [switch]$RunTests
+    [string]$Output = 'gridcraft-0.5.0-arm64-v8a-files-ru3.apk',
+    [switch]$RunTests,
+    [ValidateRange(1,64)][int]$BuildJobs = 2
 )
 $ErrorActionPreference = 'Stop'
 $portRoot = Split-Path $PSScriptRoot -Parent
 $Workspace = (Resolve-Path -LiteralPath $Workspace).Path
+if (-not $NativeTarget) { $NativeTarget = Join-Path $Workspace 'target' }
+$NativeTarget = [System.IO.Path]::GetFullPath($NativeTarget)
+$env:CARGO_TARGET_DIR = $NativeTarget
+$env:CARGO_BUILD_JOBS = "$BuildJobs"
 if (-not (Test-Path -LiteralPath "$Workspace\crates\engine\Cargo.toml")) {
     throw 'Workspace must be the assembled, patched upstream GridCraft workspace.'
+}
+# Apply the additional interface translation once; accept an already-patched workspace.
+$localePatch = Join-Path $portRoot 'patches\0002-russian-dialogs.patch'
+$ErrorActionPreference = 'Continue'
+& git -C $Workspace apply --check $localePatch 2>$null
+$canApplyLocale = $LASTEXITCODE -eq 0
+$ErrorActionPreference = 'Stop'
+if ($canApplyLocale) {
+    & git -C $Workspace apply $localePatch
+    if ($LASTEXITCODE -ne 0) { throw 'Interface translation patch failed' }
+} else {
+    & git -C $Workspace apply --reverse --check $localePatch 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'Workspace does not match the interface translation patch' }
 }
 $env:ANDROID_HOME = $Sdk
 $env:ANDROID_NDK_HOME = "$Sdk\ndk\27.2.12479018"
@@ -29,14 +48,18 @@ $env:CARGO_APK_RELEASE_KEYSTORE_PASSWORD = 'android'
 Copy-Item -LiteralPath "$portRoot\apps\gridcraft-android\Cargo.toml" -Destination "$Workspace\apps\gridcraft-android\Cargo.toml" -Force
 Copy-Item -Path "$portRoot\apps\gridcraft-android\src\*.rs" -Destination "$Workspace\apps\gridcraft-android\src" -Force
 # Replace the whole folders: a merge into an existing folder can leave stale files behind.
-Remove-Item -Recurse -Force "$Workspace\apps\gridcraft-android\java" -ErrorAction SilentlyContinue
-Copy-Item -Recurse -Force "$portRoot\apps\gridcraft-android\java" "$Workspace\apps\gridcraft-android"
-Remove-Item -Recurse -Force "$Workspace\apps\gridcraft-android\res" -ErrorAction SilentlyContinue
-Copy-Item -Recurse -Force "$portRoot\apps\gridcraft-android\res" "$Workspace\apps\gridcraft-android"
+foreach ($folder in @('java', 'res')) {
+    $destination = [System.IO.Path]::GetFullPath((Join-Path $Workspace "apps\gridcraft-android\$folder"))
+    if (-not $destination.StartsWith($Workspace.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Crate directory must stay inside Workspace'
+    }
+    if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
+    Copy-Item -LiteralPath "$portRoot\apps\gridcraft-android\$folder" -Destination "$Workspace\apps\gridcraft-android" -Recurse -Force
+}
 Push-Location $Workspace
 try {
     if ($RunTests) {
-        & cargo test -p gridcraft-android
+        & cargo test --lib -p gridcraft-android -p gridcraft-ui-egui
         if ($LASTEXITCODE -ne 0) { throw 'Android shell tests failed' }
     }
     & cargo apk build --release -p gridcraft-android
@@ -53,7 +76,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Activity compilation failed' }
 $classFiles = @(Get-ChildItem "$stage\classes" -Recurse -Filter '*.class' | ForEach-Object FullName)
 & "$Sdk\build-tools\35.0.0\d8.bat" --min-api 26 --lib $androidJar --output "$stage\dex" @classFiles
 if ($LASTEXITCODE -ne 0) { throw 'DEX compilation failed' }
-& python "$PSScriptRoot\package-bridge.py" --workspace $Workspace --port $portRoot --stage $stage --sdk $Sdk
+& python "$PSScriptRoot\package-bridge.py" --workspace $Workspace --native-target $NativeTarget --port $portRoot --stage $stage --sdk $Sdk
 if ($LASTEXITCODE -ne 0) { throw 'APK packaging failed' }
 & "$Sdk\build-tools\35.0.0\zipalign.exe" -f -P 16 4 "$stage\unsigned.apk" "$stage\aligned.apk"
 if ($LASTEXITCODE -ne 0) { throw 'APK alignment failed' }

@@ -15,10 +15,12 @@ import zipfile
 parser = argparse.ArgumentParser()
 for arg in ('workspace', 'port', 'stage', 'sdk'):
     parser.add_argument('--' + arg, type=Path, required=True)
+parser.add_argument('--native-target', type=Path)
 args = parser.parse_args()
+native_target = args.native_target or args.workspace / 'target'
 android = 'http://schemas.android.com/apk/res/android'
 ET.register_namespace('android', android)
-tree = ET.parse(args.workspace / 'target/release/apk/AndroidManifest.xml')
+tree = ET.parse(native_target / 'release/apk/AndroidManifest.xml')
 root = tree.getroot()
 app = root.find('application')
 assert app is not None
@@ -33,8 +35,8 @@ for intent_filter in app.findall('./activity/intent-filter'):
         mime = data.get(f'{{{android}}}mimeType')
         if mime and mime != mime.lower():
             ET.SubElement(intent_filter, 'data', {f'{{{android}}}mimeType': mime.lower()})
-root.set(f'{{{android}}}versionCode', '16778500')
-root.set(f'{{{android}}}versionName', '0.5.0-files-ru.1')
+root.set(f'{{{android}}}versionCode', '16778502')
+root.set(f'{{{android}}}versionName', '0.5.0-files-ru.3')
 manifest = args.stage / 'AndroidManifest.xml'
 tree.write(manifest, encoding='utf-8', xml_declaration=True)
 unsigned = args.stage / 'unsigned.apk'
@@ -43,7 +45,7 @@ subprocess.run([
     '-M', str(manifest), '-S', str(args.port / 'apps/gridcraft-android/res'),
     '-I', str(args.sdk / 'platforms/android-35/android.jar'), '-F', str(unsigned),
 ], check=True)
-with zipfile.ZipFile(args.workspace / 'target/release/apk/gridcraft.apk') as native:
+with zipfile.ZipFile(native_target / 'release/apk/gridcraft.apk') as native:
     with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED) as apk:
         for name in native.namelist():
             if name.startswith('lib/') and name.endswith('.so'):

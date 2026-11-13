@@ -2,10 +2,13 @@ package ai.storyteller.gridcraft;
 
 import android.app.NativeActivity;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.Settings;
 import android.provider.OpenableColumns;
 import android.util.Log;
@@ -16,6 +19,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.util.UUID;
+import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -42,13 +47,32 @@ public final class GridcraftActivity extends NativeActivity {
     }
 
     private void receiveDocument(Intent intent) {
-        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return;
-        final Uri uri = intent.getData();
-        if (uri == null) return;
-        final String scheme = uri.getScheme();
-        if (!"content".equals(scheme) && !"file".equals(scheme)) return;
+        if (intent == null) return;
+        String action = intent.getAction();
+        if (!Intent.ACTION_VIEW.equals(action) && !Intent.ACTION_EDIT.equals(action)
+                && !Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action)) return;
+        LinkedHashSet<Uri> uris = new LinkedHashSet<>();
+        if (intent.getData() != null) uris.add(intent.getData());
+        ClipData clip = intent.getClipData();
+        if (clip != null) for (int i = 0; i < clip.getItemCount(); i++) {
+            Uri uri = clip.getItemAt(i).getUri();
+            if (uri != null) uris.add(uri);
+        }
+        if (Intent.ACTION_SEND.equals(action)) {
+            Object stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (stream instanceof Uri) uris.add((Uri) stream);
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            ArrayList<Uri> streams = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (streams != null) uris.addAll(streams);
+        }
         final String mime = intent.getType();
-        imports.execute(() -> importDocument(uri, mime));
+        for (Uri uri : uris) {
+            if (uri == null) continue;
+            String scheme = uri.getScheme();
+            if ("content".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme)) {
+                imports.execute(() -> importDocument(uri, mime));
+            }
+        }
     }
 
     private void importDocument(Uri uri, String mime) {
@@ -98,6 +122,13 @@ public final class GridcraftActivity extends NativeActivity {
         }
     }
 
+    /** read_dir may succeed with documents hidden by scoped storage; test the actual grant. */
+    public boolean hasStorageAccess() {
+        if (Build.VERSION.SDK_INT >= 30) return Environment.isExternalStorageManager();
+        boolean read = checkSelfPermission("android.permission.READ_EXTERNAL_STORAGE") == PackageManager.PERMISSION_GRANTED;
+        return read && (Build.VERSION.SDK_INT < 29 || Environment.isExternalStorageLegacy());
+    }
+
     /** Runtime permission UI must run on Android's main thread, not its render thread. */
     public void requestStorageAccess() {
         runOnUiThread(() -> {
@@ -127,7 +158,8 @@ public final class GridcraftActivity extends NativeActivity {
     }
 
     private boolean russian() {
-        return "ru".equals(getResources().getConfiguration().getLocales().get(0).getLanguage());
+        // This Russian distribution also localizes Android notices on an English OS.
+        return true;
     }
 
     @Override protected void onDestroy() {

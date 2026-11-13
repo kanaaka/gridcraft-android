@@ -1,12 +1,12 @@
-//! An in-app file picker for Android, drawn with egui — no native dialog.
+//! The original in-app file picker for Android, drawn with egui for both Open and Save As.
 //!
 //! # Why this exists
 //!
 //! `rfd` has no Android backend (its `backend.rs` compiles no module at all for a
 //! target that is neither Linux/BSD, macOS, Windows nor wasm32), so a ported desktop app has no
 //! file dialogs at all: Open and Save As would be silently treated as cancelled. This module
-//! draws the picker instead, and the Java Activity supplies the one system screen it needs
-//! (storage access) and the files delivered by Android's own *Open with*.
+//! draws the picker instead. The Java Activity supplies storage-access settings and files
+//! delivered by Android's own *Open with*; it never replaces this picker.
 //!
 //! # How it plugs in
 //!
@@ -51,9 +51,8 @@
 //!   a locked root or the banner opens it again — instead of just drawing a padlock and leaving
 //!   the user there. All the storage permissions are declared in the crate's `Cargo.toml`.
 //!
-//! The picker starts Open in the user's Documents folder once it is readable, because that is
-//! where the workbooks are; before the grant it starts in the app folder, the one place that
-//! always works.
+//! After permission is granted Open prefers a folder containing compatible workbooks, then
+//! Download, rather than an empty Documents folder. Navigation is remembered for this window.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -158,6 +157,7 @@ struct Pending {
 thread_local! {
     /// The dialog *this* window is showing. One per thread; see the module docs.
     static PENDING: RefCell<Option<Pending>> = const { RefCell::new(None) };
+    static LAST_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 /// Every extension a filter list offers, or `None` when it offers none (then
@@ -328,7 +328,6 @@ fn link_fonts_dir(target: &Path, link: &Path) {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -390,7 +389,8 @@ mod tests {
         cancel();
         set_language(Language::En);
 
-        for expected in ["Открыть файл", "Открыть", "Отмена", "Показать все файлы", "Разрешить доступ к файлам"] {
+        for expected in ["Открыть файл", "Открыть", "Отмена", "Показать все файлы", "Разрешить доступ к файлам"]
+        {
             assert!(open.iter().any(|t| t == expected), "Missing {expected}: {open:?}");
         }
         assert!(save.iter().any(|s| s == "Сохранить как"), "{save:?}");
@@ -419,6 +419,39 @@ mod tests {
         assert_eq!(entries(&dir, None).unwrap().1.len(), 3);
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn workbook_filter_lists_every_supported_extension_and_skips_unrelated_files() {
+        let dir = std::env::temp_dir().join(format!("gridcraft-formats-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let filters = crate::workbook_extensions().unwrap();
+        for ext in &filters {
+            std::fs::write(dir.join(format!("Таблица.{}", ext.to_uppercase())), b"test").unwrap();
+        }
+        for name in ["photo.jpg", "document.docx", "book.pdf", "package.apk"] {
+            std::fs::write(dir.join(name), b"test").unwrap();
+        }
+        let (_, files) = entries(&dir, Some(&filters)).unwrap();
+        assert_eq!(files.len(), 14);
+        for ext in ["xlsx", "xltx", "xltm", "xlt", "tab", "scjson"] {
+            assert!(files.iter().any(|p| p.extension().unwrap().eq_ignore_ascii_case(ext)));
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn starts_in_folder_with_workbooks_instead_of_empty_documents() {
+        let root = std::env::temp_dir().join(format!("gridcraft-start-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("Documents")).unwrap();
+        std::fs::create_dir_all(root.join("Download")).unwrap();
+        std::fs::write(root.join("Download/Таблица.XLSX"), b"test").unwrap();
+        let filters = crate::workbook_extensions();
+        assert_eq!(choose_start_dir(&root, filters.as_ref()), Some(root.join("Download")));
+        std::fs::remove_file(root.join("Download/Таблица.XLSX")).unwrap();
+        std::fs::write(root.join("Documents/template.XLTX"), b"test").unwrap();
+        assert_eq!(choose_start_dir(&root, filters.as_ref()), Some(root.join("Documents")));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// The best directory to open first: the app folder is always writable, so it
@@ -432,12 +465,30 @@ fn default_dir() -> PathBuf {
 /// read, so a tablet that has granted storage shows the user's workbooks rather than the app's
 /// private folder. Save keeps [`default_dir`]: the app folder is the one place a save always
 /// works, with or without a permission.
-fn open_start_dir() -> PathBuf {
-    ["Documents", "Download"]
-        .iter()
-        .map(|sub| shared_root().join(sub))
-        .find(|p| readable(p))
-        .unwrap_or_else(default_dir)
+fn open_start_dir(extensions: Option<&Vec<String>>) -> PathBuf {
+    if needs_access() {
+        return default_dir();
+    }
+    LAST_DIR.with(|last| {
+        if let Some(path) = last.borrow().as_ref().filter(|p| readable(p)) {
+            return path.clone();
+        }
+        choose_start_dir(shared_root(), extensions).unwrap_or_else(default_dir)
+    })
+}
+
+fn choose_start_dir(root: &Path, extensions: Option<&Vec<String>>) -> Option<PathBuf> {
+    let dirs: Vec<_> = ["Download", "Documents", ""].into_iter().map(|sub| root.join(sub)).collect();
+    // An existing but empty Documents folder must not hide a workbook sitting in Download.
+    dirs.iter().find(|p| entries(p, extensions).is_ok_and(|(_, files)| !files.is_empty())).or_else(|| dirs.iter().find(|p| readable(p))).cloned()
+}
+
+fn app_owned(path: &Path) -> bool {
+    EXT_DIR.get().and_then(|p| p.parent()).is_some_and(|p| path.starts_with(p))
+}
+
+fn folder_accessible(path: &Path, granted: bool) -> bool {
+    (app_owned(path) || granted) && readable(path)
 }
 
 /// Open the system screen that hands out shared-storage access, and say in the picker what to
@@ -469,7 +520,8 @@ fn readable(dir: &Path) -> bool {
 fn entries(dir: &Path, extensions: Option<&Vec<String>>) -> Result<(Vec<PathBuf>, Vec<PathBuf>), String> {
     let rd = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let (mut dirs, mut files) = (Vec::new(), Vec::new());
-    for entry in rd.flatten() {
+    for entry in rd {
+        let entry = entry.map_err(|e| format!("{}: {e}", dir.display()))?;
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
@@ -510,7 +562,7 @@ pub fn draw(ctx: &egui::Context) {
     // First frame: pick a starting directory.
     if !pending.started {
         pending.started = true;
-        pending.dir = if kind == Kind::Save { default_dir() } else { open_start_dir() };
+        pending.dir = if kind == Kind::Save { default_dir() } else { open_start_dir(pending.extensions.as_ref()) };
         if kind == Kind::Save && pending.name.is_empty() {
             pending.name = text("untitled", "Без названия").to_string();
         }
@@ -523,7 +575,7 @@ pub fn draw(ctx: &egui::Context) {
     let locked_out = needs_access();
     if pending.awaiting_access && !locked_out {
         pending.awaiting_access = false;
-        pending.dir = open_start_dir();
+        pending.dir = open_start_dir(pending.extensions.as_ref());
         pending.note = None;
     }
 
@@ -532,7 +584,11 @@ pub fn draw(ctx: &egui::Context) {
     let mut navigate: Option<PathBuf> = None;
 
     let dir = pending.dir.clone();
-    let listing = entries(&dir, if pending.show_all { None } else { pending.extensions.as_ref() });
+    let listing = if locked_out && !app_owned(&dir) {
+        Err(text("File access is not granted.", "Доступ к файлам устройства не разрешён.").to_string())
+    } else {
+        entries(&dir, if pending.show_all { None } else { pending.extensions.as_ref() })
+    };
     let multi = kind == Kind::OpenMany;
     // A tablet screen is smaller than the desktop default, and in portrait
     // narrower than a hard-coded desktop width. `content_rect` is the area egui
@@ -574,7 +630,7 @@ pub fn draw(ctx: &egui::Context) {
             // permission the padlock is about.
             ui.horizontal_wrapped(|ui| {
                 for (label, path) in roots() {
-                    let ok = readable(&path);
+                    let ok = folder_accessible(&path, !locked_out);
                     let here = path == dir;
                     let caption = if ok { label } else { format!("{label} \u{1F512}") };
                     if ui.add_enabled(!here, egui::Button::new(caption)).clicked() {
@@ -584,10 +640,8 @@ pub fn draw(ctx: &egui::Context) {
                             // The permission is there and the folder still cannot be read — a
                             // missing folder, or one this Android version refuses by path (on
                             // Android 10 scoped storage has no "All files access" to grant).
-                            pending.note = Some(
-                                text("This folder is unavailable or does not exist.", "Эта папка недоступна или не существует.")
-                                    .to_string(),
-                            );
+                            pending.note =
+                                Some(text("This folder is unavailable or does not exist.", "Эта папка недоступна или не существует.").to_string());
                         } else {
                             ask_for_access(&mut pending);
                         }
@@ -616,18 +670,23 @@ pub fn draw(ctx: &egui::Context) {
             ui.separator();
             if pending.extensions.is_some() {
                 ui.checkbox(&mut pending.show_all, text("Show all files", "Показать все файлы"));
+                if let Some(exts) = &pending.extensions {
+                    ui.label(
+                        egui::RichText::new(format!("{}: {}", text("Supported formats", "Поддерживаемые форматы"), exts.join(", "))).small().weak(),
+                    );
+                }
             }
             let list_h = (h - 190.0).max(120.0);
             egui::ScrollArea::vertical().max_height(list_h).show(ui, |ui| match &listing {
                 Err(e) => {
                     ui.label(text("Cannot read this folder.", "Не удалось прочитать папку."));
                     ui.label(egui::RichText::new(e.clone()).monospace().weak().small());
-                    ui.label(text(
-                        "Allow file access to browse shared storage.",
-                        "Для просмотра памяти устройства разрешите доступ к файлам.",
-                    ));
+                    ui.label(text("Allow file access to browse shared storage.", "Для просмотра памяти устройства разрешите доступ к файлам."));
                 }
                 Ok((dirs, files)) => {
+                    if !files.is_empty() {
+                        ui.label(format!("{}: {}", text("Files", "Файлов"), files.len()));
+                    }
                     if dirs.is_empty() && files.is_empty() {
                         ui.label(text("(empty — no matching files)", "(нет подходящих файлов)"));
                     }
@@ -701,22 +760,28 @@ pub fn draw(ctx: &egui::Context) {
             }
 
             if dir == default_dir() {
-                ui.label(egui::RichText::new(text(
-                    "Allow file access to save to Documents or Download.",
-                    "Разрешите доступ к файлам, чтобы сохранять в папки «Документы» и «Загрузки».",
-                ))
-                .weak()
-                .small());
+                ui.label(
+                    egui::RichText::new(text(
+                        "Allow file access to save to Documents or Download.",
+                        "Разрешите доступ к файлам, чтобы сохранять в папки «Документы» и «Загрузки».",
+                    ))
+                    .weak()
+                    .small(),
+                );
             }
         });
 
     if let Some(dir) = navigate {
+        LAST_DIR.with(|last| *last.borrow_mut() = Some(dir.clone()));
         pending.dir = dir;
         pending.note = None;
     }
     if answer.is_some() || cancel {
         // Cancelled: an empty answer is what every seam here reads as one.
         let paths = answer.unwrap_or_default();
+        if !paths.is_empty() {
+            LAST_DIR.with(|last| *last.borrow_mut() = Some(pending.dir.clone()));
+        }
         if let Some(tx) = pending.answer.take() {
             let _ = tx.send(paths);
         }

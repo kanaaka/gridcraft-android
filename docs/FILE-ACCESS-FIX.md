@@ -1,5 +1,8 @@
 # Built-in file access and Open with — 2026-11-13
 
+This describes files-ru.1. The current files-ru.3 build keeps the original in-app picker and fixes
+format filtering, storage navigation and file-manager hand-offs; see [BUILTIN-PICKER-RU3.md](BUILTIN-PICKER-RU3.md).
+
 Open, Save As, Insert Picture and the Backstage exports use the built-in egui file picker; it is
 not replaced by Android's system document chooser. The picker is translated into Russian using the
 editor's language, checks the actual storage grant (a successful `read_dir` can still hide shared

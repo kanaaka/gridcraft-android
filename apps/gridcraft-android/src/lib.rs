@@ -154,8 +154,8 @@ fn load_prefs(app: &mut SheetApp) {
     let Some(dir) = DATA_DIR.get() else {
         return;
     };
-    // First run: follow the device's language and appearance until the user chooses and saves.
-    app.ui.language = gridcraft_ui_egui::i18n::Language::system();
+    // This distribution defaults to Russian; an explicitly saved language still takes precedence.
+    app.ui.language = gridcraft_ui_egui::i18n::Language::Ru;
     app.ui.system_theme = true;
     if let Ok(bytes) = std::fs::read(dir.join("ui.json"))
         && let Ok(ui) = serde_json::from_slice::<UiState>(&bytes)
@@ -210,7 +210,7 @@ fn save_prefs_if_due(app: &SheetApp, ui: &mut prefs_watch::Writer, engine: &mut 
 
 /// The workbooks Open offers, as on the desktop.
 fn workbook_extensions() -> Option<Vec<String>> {
-    file_picker::extensions(&[&["xlsx", "xlsm", "xls", "xlsb", "ods", "csv", "tsv", "txt", "json"]])
+    file_picker::extensions(&[&["xlsx", "xlsm", "xltx", "xltm", "xls", "xlt", "xlsb", "ods", "csv", "tsv", "tab", "txt", "json", "scjson"]])
 }
 
 fn picture_extensions() -> Option<Vec<String>> {

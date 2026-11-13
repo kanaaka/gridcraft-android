@@ -1,0 +1,2864 @@
+--- a/crates/ui-egui/src/backstage.rs
++++ b/crates/ui-egui/src/backstage.rs
+@@ -7,6 +7,7 @@
+ //! UI-only and never saved. Recent workbooks are listed by path only: nothing on disk is touched
+ //! until the user picks one.
+ 
++use crate::i18n::label as tr;
+ use egui::{Align2, Color32, Key, Modifiers, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
+ use serde_json::{Value as Json, json};
+ 
+@@ -317,7 +318,7 @@
+             out.close = true;
+         }
+         for (i, (name, title)) in gridcraft_engine::sample::SAMPLES.iter().enumerate() {
+-            if tile(ui, title, Some(i)).clicked() {
++            if tile(ui, tr(ui, title), Some(i)).clicked() {
+                 app.run_or_alert("file.new", json!({"sample": name}));
+                 out.close = true;
+             }
+@@ -622,7 +623,7 @@
+             dim(ui, &format!("{sheet} · {range}"));
+             ui.add_space(8.0);
+             ui.horizontal(|ui| {
+-                if ui.add_enabled(bs.preview_page > 0, egui::Button::new("◀")).on_hover_text(lang.tr("Previous page")).clicked() {
++                if ui.add_enabled(bs.preview_page > 0, egui::Button::new(tr(ui, "◀"))).on_hover_text(lang.tr("Previous page")).clicked() {
+                     bs.preview_page = bs.preview_page.saturating_sub(1);
+                 }
+                 let text = lang
+@@ -630,7 +631,7 @@
+                     .replace("{page}", &(bs.preview_page + 1).to_string())
+                     .replace("{pages}", &pages.len().to_string());
+                 ui.label(text);
+-                if ui.add_enabled(bs.preview_page < last, egui::Button::new("▶")).on_hover_text(lang.tr("Next page")).clicked() {
++                if ui.add_enabled(bs.preview_page < last, egui::Button::new(tr(ui, "▶"))).on_hover_text(lang.tr("Next page")).clicked() {
+                     bs.preview_page = (bs.preview_page + 1).min(last);
+                 }
+             });
+--- a/crates/ui-egui/src/credits.rs
++++ b/crates/ui-egui/src/credits.rs
+@@ -3,6 +3,7 @@
+ //! build.rs from contributors/contributors.json (craftrules standards/contributors.md); nothing is
+ //! read at run time.
+ 
++use crate::i18n::label as tr;
+ use std::cmp::Ordering;
+ 
+ use egui::RichText;
+@@ -215,46 +216,46 @@
+     let id = egui::Id::new("credits_view");
+     let mut v = ui.data_mut(|d| d.get_temp::<View>(id)).unwrap_or_default();
+     ui.horizontal_wrapped(|ui| {
+-        ui.label("Show");
++        ui.label(tr(ui, "Show"));
+         for m in NameMode::ALL {
+-            if ui.selectable_label(v.names == m, m.label()).clicked() {
++            if ui.selectable_label(v.names == m, tr(ui, m.label())).clicked() {
+                 v.names = m;
+             }
+         }
+         ui.separator();
+-        ui.label("Sort");
++        ui.label(tr(ui, "Sort"));
+         egui::ComboBox::from_id_salt("credits_sort").selected_text(v.key.label().0).show_ui(ui, |ui| {
+             for k in SortKey::ALL {
+-                if ui.selectable_label(v.key == k, k.label().0).clicked() {
++                if ui.selectable_label(v.key == k, tr(ui, k.label().0)).clicked() {
+                     v.key = k;
+                     v.ascending = k.default_ascending();
+                 }
+             }
+         });
+-        if ui.button(if v.ascending { "▲" } else { "▼" }).on_hover_text("Reverse the order").clicked() {
++        if ui.button(if v.ascending { "▲" } else { "▼" }).on_hover_text(tr(ui, "Reverse the order")).clicked() {
+             v.ascending = !v.ascending;
+         }
+         ui.separator();
+-        if ui.selectable_label(!v.table, "Grab bag").clicked() {
++        if ui.selectable_label(!v.table, tr(ui, "Grab bag")).clicked() {
+             v.table = false;
+         }
+-        if ui.selectable_label(v.table, "Table").clicked() {
++        if ui.selectable_label(v.table, tr(ui, "Table")).clicked() {
+             v.table = true;
+         }
+     });
+     let list = sorted(CONTRIBUTORS, v.names, v.key, v.ascending);
+-    ui.label(RichText::new(format!("{} contributors · {} commits", list.len(), group(TOTAL_COMMITS))).small().weak());
++    ui.label(RichText::new(format!("{} {} · {} {}", list.len(), tr(ui, "contributors"), group(TOTAL_COMMITS), tr(ui, "commits"))).small().weak());
+     ui.separator();
+     egui::ScrollArea::both().auto_shrink([false, false]).max_height(340.0).show(ui, |ui| {
+         if list.is_empty() {
+-            ui.label("No contributor data was built into this copy.");
++            ui.label(tr(ui, "No contributor data was built into this copy."));
+         } else if v.table {
+             table(ui, &list, &mut v);
+         } else {
+             ui.horizontal_wrapped(|ui| {
+                 for (i, c) in list.iter().enumerate() {
+                     if i > 0 {
+-                        ui.label(RichText::new("·").weak());
++                        ui.label(RichText::new(tr(ui, "·")).weak());
+                     }
+                     ui.hyperlink_to(c.name(v.names), format!("https://github.com/{}", c.login)).on_hover_text(c.summary());
+                 }
+@@ -268,7 +269,7 @@
+     egui::Grid::new("credits_table").striped(true).num_columns(SortKey::ALL.len()).show(ui, |ui| {
+         for k in SortKey::ALL {
+             let arrow = if v.key == k { if v.ascending { " ▲" } else { " ▼" } } else { "" };
+-            if ui.button(RichText::new(format!("{}{arrow}", k.label().1)).strong()).on_hover_text(k.label().0).clicked() {
++            if ui.button(RichText::new(format!("{}{arrow}", tr(ui, k.label().1))).strong()).on_hover_text(tr(ui, k.label().0)).clicked() {
+                 if v.key == k {
+                     v.ascending = !v.ascending;
+                 } else {
+@@ -297,14 +298,14 @@
+ /// About ▸ Models: AI models credited in Co-Authored-By trailers.
+ pub fn models_ui(ui: &mut egui::Ui) {
+     if MODELS.is_empty() {
+-        ui.label("No model credits were built into this copy.");
++        ui.label(tr(ui, "No model credits were built into this copy."));
+         return;
+     }
+     let assisted: u64 = MODELS.iter().map(|m| m.commits).max().unwrap_or(0).max(1);
+     egui::ScrollArea::both().auto_shrink([false, false]).max_height(340.0).show(ui, |ui| {
+         egui::Grid::new("credits_models").striped(true).num_columns(6).show(ui, |ui| {
+             for h in ["Company", "Model", "Version", "Commits", "% of all commits", "Lines +/−"] {
+-                ui.label(RichText::new(h).strong());
++                ui.label(RichText::new(tr(ui, h)).strong());
+             }
+             ui.end_row();
+             for m in MODELS {
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -10,6 +10,7 @@
+ use serde_json::{Map, Value as Json, json};
+ 
+ use crate::SheetApp;
++use crate::i18n::label as tr;
+ use crate::theme;
+ 
+ #[derive(Clone, Debug, PartialEq)]
+@@ -155,7 +156,7 @@
+                     vec![
+                         Number { key: "to", label: "Before sheet (position, 0 = first):" },
+                         Check { key: "copy", label: "Create a copy" },
+-                        Note(format!("Sheets: {}", sheets.join(", "))),
++                        Note(format!("{}: {}", app.ui.language.tr("Sheets"), sheets.join(", "))),
+                     ],
+                     json!({"to": 0, "copy": false}),
+                 );
+@@ -198,13 +199,13 @@
+                             .collect()
+                     })
+                     .unwrap_or_default();
+-                let summary = if rows.is_empty() { "No ranges yet.".to_string() } else { rows.join("\n") };
++                let summary = if rows.is_empty() { app.ui.language.tr("No ranges yet.").to_string() } else { rows.join("\n") };
+                 Dialog::form(
+                     "allowEditRanges",
+                     "Allow Edit Ranges",
+                     "review.allowEditRanges",
+                     vec![
+-                        Note(format!("Ranges that stay editable when the sheet is protected:\n{summary}")),
++                        Note(format!("{}\n{summary}", app.ui.language.tr("Ranges that stay editable when the sheet is protected:"))),
+                         Choice {
+                             key: "action",
+                             label: "Action",
+@@ -251,7 +252,7 @@
+                     "unhideSheet",
+                     "Unhide",
+                     "sheet.unhide",
+-                    vec![Text { key: "sheet", label: "Unhide sheet:" }, Note(format!("Hidden: {}", opts.join(", ")))],
++                    vec![Text { key: "sheet", label: "Unhide sheet:" }, Note(format!("{}: {}", app.ui.language.tr("Hidden sheets"), opts.join(", ")))],
+                     json!({"sheet": first}),
+                 );
+                 d.values.insert("sheet".into(), json!(first));
+@@ -874,7 +875,7 @@
+         "solver" => 460.0,
+         _ => 380.0,
+     };
+-    let window = egui::Window::new(d.title.clone())
++    let window = egui::Window::new(crate::i18n::current(ctx).tr(&d.title))
+         .id(egui::Id::new("dialog").with(&d.name))
+         .collapsible(false)
+         .resizable(false)
+@@ -901,11 +902,11 @@
+                 "solverResults" => solver_results(app, ui, &mut d, &mut open),
+                 "spelling" => spelling(app, ui, &mut d, &mut open),
+                 "agents" => {
+-                    ui.label("GridCraft is fully drivable by agents. Every menu item, button and gesture is a command:");
++                    ui.label(tr(ui, "GridCraft is fully drivable by agents. Every menu item, button and gesture is a command:"));
+                     ui.add_space(4.0);
+                     ui.monospace("gridcraft --control 7979        # JSON-lines control channel\ngridcraft-cli mcp --connect 7979   # MCP bridged to this window\ngridcraft-cli mcp                   # headless MCP server");
+                     ui.add_space(4.0);
+-                    ui.label(format!("{} engine commands are available. See docs/mcp.md and docs/control-protocol.md.", gridcraft_engine::command_specs().len()));
++                    ui.label(format!("{}: {}. docs/mcp.md · docs/control-protocol.md", tr(ui, "Available engine commands"), gridcraft_engine::command_specs().len()));
+                 }
+                 "about" => about(ui, &mut d),
+                 "journal" => {
+@@ -943,17 +944,17 @@
+                         }
+                     }
+                     if app.services.pick_picture_async.is_some() {
+-                        let name = d.values.get("alt").and_then(Json::as_str).unwrap_or("No picture selected");
++                        let name = d.values.get("alt").and_then(Json::as_str).unwrap_or(tr(ui, "No picture selected"));
+                         ui.label(name);
+                     } else {
+-                        ui.label("Picture file path (PNG or JPEG):");
++                        ui.label(tr(ui, "Picture file path (PNG or JPEG):"));
+                         let mut path = d.values.get("path").and_then(Json::as_str).unwrap_or("").to_string();
+                         if ui.text_edit_singleline(&mut path).changed() {
+                             d.values.remove("base64");
+                             d.values.insert("path".into(), json!(path));
+                         }
+                     }
+-                    if (app.services.pick_picture.is_some() || app.services.pick_picture_async.is_some()) && ui.button("Browse…").clicked() {
++                    if (app.services.pick_picture.is_some() || app.services.pick_picture_async.is_some()) && ui.button(tr(ui, "Browse…")).clicked() {
+                         if let Some(start) = &app.services.pick_picture_async {
+                             let inbox = crate::Inbox::default();
+                             start(inbox.clone());
+@@ -967,13 +968,13 @@
+                             d.values.insert("path".into(), json!(path));
+                         }
+                     }
+-                    ui.label("Description (optional):");
++                    ui.label(tr(ui, "Description (optional):"));
+                     let mut alt = d.values.get("alt").and_then(Json::as_str).unwrap_or("").to_string();
+                     if ui.text_edit_singleline(&mut alt).changed() {
+                         d.values.insert("alt".into(), json!(alt));
+                     }
+                     if d.values.get("placement").and_then(Json::as_str) == Some("cell") {
+-                        ui.label(egui::RichText::new("Fits inside the selected cell and moves with its content.").small());
++                        ui.label(egui::RichText::new(tr(ui, "Fits inside the selected cell and moves with its content.")).small());
+                     }
+                     ok_cancel(ui, &mut confirm, &mut open);
+                 }
+@@ -1002,7 +1003,7 @@
+                 }
+                 "saveCopy" => {
+                     let fmt = d.values.get("format").and_then(Json::as_str).unwrap_or("xlsx").to_string();
+-                    ui.label(format!("Save a copy as .{fmt}"));
++                    ui.label(format!("{} .{fmt}", tr(ui, "Save a copy as")));
+                     let mut path = d.values.get("path").and_then(Json::as_str).unwrap_or("").to_string();
+                     ui.text_edit_singleline(&mut path);
+                     d.values.insert("path".into(), json!(path.clone()));
+@@ -1023,17 +1024,17 @@
+                     }
+                 }
+                 "saveChanges" => {
+-                    ui.label(format!("Do you want to save the changes you made to {}?", d.values.get("title").and_then(Json::as_str).unwrap_or("this workbook")));
++                    ui.label(format!("{} {}?", tr(ui, "Save changes to"), d.values.get("title").and_then(Json::as_str).unwrap_or(tr(ui, "this workbook"))));
+                     ui.horizontal(|ui| {
+-                        if ui.button("Don't Save").clicked() {
++                        if ui.button(tr(ui, "Don't Save")).clicked() {
+                             app.run_or_alert("file.close", json!({"force": true}));
+                             open = false;
+                         }
+-                        if ui.button("Cancel").clicked() {
++                        if ui.button(tr(ui, "Cancel")).clicked() {
+                             open = false;
+                         }
+                         // File operations must include the cell the user is still editing (as the File > Save menu item already does).
+-                        if ui.button("Save").clicked() && app.commit_edit(0, 0, false, false) {
++                        if ui.button(tr(ui, "Save")).clicked() && app.commit_edit(0, 0, false, false) {
+                             app.run_or_alert("file.save", json!({}));
+                             if app.session.active().is_some_and(|x| !x.is_dirty()) {
+                                 app.run_or_alert("file.close", json!({"force": true}));
+@@ -1043,28 +1044,28 @@
+                     });
+                 }
+                 "start" => {
+-                    ui.heading("Start a new workbook");
++                    ui.heading(tr(ui, "Start a new workbook"));
+                     ui.horizontal_wrapped(|ui| {
+-                        if ui.button("Blank workbook").clicked() {
++                        if ui.button(tr(ui, "Blank workbook")).clicked() {
+                             app.run_or_alert("file.new", json!({}));
+                             open = false;
+                         }
+                         for (n, t) in gridcraft_engine::sample::SAMPLES {
+-                            if ui.button(*t).clicked() {
++                            if ui.button(tr(ui, t)).clicked() {
+                                 app.run_or_alert("file.new", json!({"sample": n}));
+                                 open = false;
+                             }
+                         }
+                     });
+                     ui.separator();
+-                    ui.label(egui::RichText::new("Recent").strong());
++                    ui.label(egui::RichText::new(tr(ui, "Recent")).strong());
+                     for path in app.ui.recent.clone() {
+                         if ui.link(&path).clicked() {
+                             app.open_path(&path);
+                             open = false;
+                         }
+                     }
+-                    if ui.button("Open…").clicked() {
++                    if ui.button(tr(ui, "Open…")).clicked() {
+                         app.open_dialog("open", json!({}));
+                         open = false;
+                     }
+@@ -1201,11 +1202,11 @@
+ fn ok_cancel(ui: &mut egui::Ui, confirm: &mut bool, open: &mut bool) {
+     ui.add_space(8.0);
+     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+-        let ok = ui.add(egui::Button::new(egui::RichText::new("   OK   ").color(Color32::WHITE)).fill(crate::theme::Tokens::get(ui.ctx()).accent));
++        let ok = ui.add(egui::Button::new(egui::RichText::new(tr(ui, "   OK   ")).color(Color32::WHITE)).fill(crate::theme::Tokens::get(ui.ctx()).accent));
+         if ok.clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+             *confirm = true;
+         }
+-        if ui.button(" Cancel ").clicked() {
++        if ui.button(tr(ui, " Cancel ")).clicked() {
+             *open = false;
+         }
+     });
+@@ -1223,7 +1224,7 @@
+             match f {
+                 Field::Text { key, label } => {
+                     ui.vertical(|ui| {
+-                        ui.label(label);
++                        ui.label(tr(ui, label));
+                         let mut s = d
+                             .values
+                             .get(key)
+@@ -1243,17 +1244,17 @@
+                 Field::Password { key, label } => {
+                     // Masked as typed (Excel shows dots); "Show password" reveals it on purpose.
+                     ui.vertical(|ui| {
+-                        ui.label(label);
++                        ui.label(tr(ui, label));
+                         let mut s = d.values.get(key).and_then(Json::as_str).unwrap_or_default().to_string();
+                         if ui.add(egui::TextEdit::singleline(&mut s).password(!d.show_password).desired_width(320.0)).changed() {
+                             d.values.insert(key.into(), json!(s));
+                         }
+-                        ui.checkbox(&mut d.show_password, "Show password");
++                        ui.checkbox(&mut d.show_password, tr(ui, "Show password"));
+                     });
+                 }
+                 Field::Number { key, label } => {
+                     ui.horizontal(|ui| {
+-                        ui.label(label);
++                        ui.label(tr(ui, label));
+                         let mut n = d.values.get(key).and_then(Json::as_f64).unwrap_or(0.0);
+                         if ui.add(egui::DragValue::new(&mut n).speed(0.5)).changed() {
+                             d.values.insert(key.into(), json!(n));
+@@ -1262,10 +1263,10 @@
+                 }
+                 Field::Choice { key, label, options } => {
+                     ui.vertical(|ui| {
+-                        ui.label(egui::RichText::new(label).strong());
++                        ui.label(egui::RichText::new(tr(ui, label)).strong());
+                         let cur = d.values.get(key).and_then(Json::as_str).unwrap_or("").to_string();
+                         for (val, text) in options {
+-                            if ui.radio(cur == val, text).clicked() {
++                            if ui.radio(cur == val, tr(ui, text)).clicked() {
+                                 d.values.insert(key.into(), json!(val));
+                             }
+                         }
+@@ -1273,12 +1274,12 @@
+                 }
+                 Field::Check { key, label } => {
+                     let mut b = d.values.get(key).and_then(Json::as_bool).unwrap_or(false);
+-                    if ui.checkbox(&mut b, label).changed() {
++                    if ui.checkbox(&mut b, tr(ui, label)).changed() {
+                         d.values.insert(key.into(), json!(b));
+                     }
+                 }
+                 Field::Note(t) => {
+-                    ui.label(egui::RichText::new(t).small());
++                    ui.label(egui::RichText::new(tr(ui, &t)).small());
+                 }
+             }
+             ui.end_row();
+@@ -1291,7 +1292,7 @@
+ fn about(ui: &mut egui::Ui, d: &mut Dialog) {
+     ui.horizontal(|ui| {
+         for tab in ["About", "Contributors", "Models"] {
+-            if ui.selectable_label(d.tab == tab, tab).clicked() {
++            if ui.selectable_label(d.tab == tab, tr(ui, tab)).clicked() {
+                 d.tab = tab.to_string();
+             }
+         }
+@@ -1301,12 +1302,12 @@
+         "Contributors" => crate::credits::contributors_ui(ui),
+         "Models" => crate::credits::models_ui(ui),
+         _ => {
+-            ui.heading("GridCraft");
+-            ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
++            ui.heading(tr(ui, "GridCraft"));
++            ui.label(format!("{} {}", tr(ui, "Version"), env!("CARGO_PKG_VERSION")));
+             ui.add_space(4.0);
+-            ui.label("A clean-room, open-source, Rust-native spreadsheet. Part of ArtCraft.");
++            ui.label(tr(ui, "A clean-room, open-source, Rust-native spreadsheet. Part of ArtCraft."));
+             ui.hyperlink_to("getartcraft.com/apps/gridcraft", "https://getartcraft.com/apps/gridcraft");
+-            ui.hyperlink_to("Join the ArtCraft Discord", "https://discord.gg/artcraft");
++            ui.hyperlink_to(tr(ui, "Join the ArtCraft Discord"), "https://discord.gg/artcraft");
+         }
+     }
+ }
+@@ -1315,11 +1316,11 @@
+ /// preserved VBA project. Mirrors Excel's Developer ▸ Macros list, but is honest that VBA is
+ /// preserved and not executed.
+ fn macros(ui: &mut egui::Ui, d: &mut Dialog) {
+-    ui.label("Automation in this workbook. GridCraft runs its own scripts; a file's VBA project is preserved but not executed.");
++    ui.label(tr(ui, "Automation in this workbook. GridCraft runs its own scripts; a file's VBA project is preserved but not executed."));
+     ui.add_space(6.0);
+     let items: Vec<Json> = d.result.as_ref().and_then(Json::as_array).cloned().unwrap_or_default();
+     if items.is_empty() {
+-        ui.weak("This workbook has no scripts or macros.");
++        ui.weak(tr(ui, "This workbook has no scripts or macros."));
+         return;
+     }
+     egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+@@ -1329,10 +1330,10 @@
+             ui.horizontal(|ui| {
+                 ui.label(egui::RichText::new(name).strong());
+                 if is_vba {
+-                    ui.weak("— VBA project (preserved, not run)");
++                    ui.weak(tr(ui, "— VBA project (preserved, not run)"));
+                 } else {
+                     let steps = it.get("steps").and_then(Json::as_u64).unwrap_or(0);
+-                    ui.weak(format!("— {steps} step{}", if steps == 1 { "" } else { "s" }));
++                    ui.weak(format!("— {steps} {}", tr(ui, "steps")));
+                 }
+             });
+         }
+@@ -1342,7 +1343,7 @@
+ fn format_cells(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm: &mut bool) {
+     ui.horizontal(|ui| {
+         for tab in ["Number", "Alignment", "Font", "Border", "Fill", "Protection"] {
+-            if ui.selectable_label(d.tab == tab, tab).clicked() {
++            if ui.selectable_label(d.tab == tab, tr(ui, tab)).clicked() {
+                 d.tab = tab.to_string();
+             }
+         }
+@@ -1354,20 +1355,20 @@
+         "Number" => {
+             let mut code = st.num_fmt.as_str().to_string();
+             ui.columns(2, |cols| {
+-                cols[0].label(egui::RichText::new("Category:").strong());
++                cols[0].label(egui::RichText::new(tr(&cols[0], "Category:")).strong());
+                 for name in
+                     ["General", "Number", "Currency", "Accounting", "Short Date", "Long Date", "Time", "Percentage", "Fraction", "Scientific", "Text"]
+                 {
+                     let c = gridcraft_engine::cmd::format::format_code_for(name).to_string();
+-                    if cols[0].selectable_label(code == c, name).clicked() {
++                    if cols[0].selectable_label(code == c, tr(&cols[0], name)).clicked() {
+                         code = c;
+                     }
+                 }
+-                cols[1].label(egui::RichText::new("Sample").strong());
++                cols[1].label(egui::RichText::new(tr(&cols[1], "Sample")).strong());
+                 let preview = app.session.active().map(|doc| gridcraft_engine::display::format(&sample, &code, &doc.wb).text).unwrap_or_default();
+                 cols[1].label(egui::RichText::new(preview).font(theme::ui_font(15.0)));
+                 cols[1].add_space(8.0);
+-                cols[1].label("Type (custom format code):");
++                cols[1].label(tr(&cols[1], "Type (custom format code):"));
+                 cols[1].text_edit_singleline(&mut code);
+                 for c in [
+                     "0",
+@@ -1396,7 +1397,7 @@
+         }
+         "Alignment" => {
+             use gridcraft_engine::model::{HAlign, VAlign};
+-            ui.label(egui::RichText::new("Horizontal").strong());
++            ui.label(egui::RichText::new(tr(ui, "Horizontal")).strong());
+             ui.horizontal_wrapped(|ui| {
+                 for (h, n) in [
+                     (HAlign::General, "General"),
+@@ -1408,10 +1409,10 @@
+                     (HAlign::CenterAcross, "Center Across Selection"),
+                     (HAlign::Distributed, "Distributed"),
+                 ] {
+-                    ui.radio_value(&mut st.align.h, h, n);
++                    ui.radio_value(&mut st.align.h, h, tr(ui, n));
+                 }
+             });
+-            ui.label(egui::RichText::new("Vertical").strong());
++            ui.label(egui::RichText::new(tr(ui, "Vertical")).strong());
+             ui.horizontal_wrapped(|ui| {
+                 for (v, n) in [
+                     (VAlign::Top, "Top"),
+@@ -1420,29 +1421,29 @@
+                     (VAlign::Justify, "Justify"),
+                     (VAlign::Distributed, "Distributed"),
+                 ] {
+-                    ui.radio_value(&mut st.align.v, v, n);
++                    ui.radio_value(&mut st.align.v, v, tr(ui, n));
+                 }
+             });
+             let mut indent = st.align.indent as f32;
+-            ui.add(egui::Slider::new(&mut indent, 0.0..=15.0).text("Indent"));
++            ui.add(egui::Slider::new(&mut indent, 0.0..=15.0).text(tr(ui, "Indent")));
+             st.align.indent = indent as u8;
+             let mut rot = if st.align.rotation == 255 { 0.0 } else { st.align.rotation as f32 };
+-            ui.add(egui::Slider::new(&mut rot, -90.0..=90.0).text("Orientation (degrees)"));
++            ui.add(egui::Slider::new(&mut rot, -90.0..=90.0).text(tr(ui, "Orientation (degrees)")));
+             st.align.rotation = rot as i16;
+-            ui.checkbox(&mut st.align.wrap, "Wrap text");
+-            ui.checkbox(&mut st.align.shrink, "Shrink to fit");
++            ui.checkbox(&mut st.align.wrap, tr(ui, "Wrap text"));
++            ui.checkbox(&mut st.align.shrink, tr(ui, "Shrink to fit"));
+         }
+         "Font" => {
+-            egui::ComboBox::from_label("Font").selected_text(st.font.name.clone()).show_ui(ui, |ui| {
++            egui::ComboBox::from_label(tr(ui, "Font")).selected_text(st.font.name.clone()).show_ui(ui, |ui| {
+                 for f in crate::fonts::families() {
+                     ui.selectable_value(&mut st.font.name, f.clone(), f.clone());
+                 }
+             });
+-            ui.add(egui::Slider::new(&mut st.font.size, 6.0..=72.0).text("Size"));
++            ui.add(egui::Slider::new(&mut st.font.size, 6.0..=72.0).text(tr(ui, "Size")));
+             ui.horizontal(|ui| {
+-                ui.checkbox(&mut st.font.bold, "Bold");
+-                ui.checkbox(&mut st.font.italic, "Italic");
+-                ui.checkbox(&mut st.font.strike, "Strikethrough");
++                ui.checkbox(&mut st.font.bold, tr(ui, "Bold"));
++                ui.checkbox(&mut st.font.italic, tr(ui, "Italic"));
++                ui.checkbox(&mut st.font.strike, tr(ui, "Strikethrough"));
+             });
+             use gridcraft_engine::model::{Underline, VertAlign};
+             ui.horizontal(|ui| {
+@@ -1453,15 +1454,15 @@
+                     (Underline::SingleAccounting, "Single Accounting"),
+                     (Underline::DoubleAccounting, "Double Accounting"),
+                 ] {
+-                    ui.radio_value(&mut st.font.underline, u, n);
++                    ui.radio_value(&mut st.font.underline, u, tr(ui, n));
+                 }
+             });
+             ui.horizontal(|ui| {
+-                ui.radio_value(&mut st.font.vert, VertAlign::Baseline, "Normal");
+-                ui.radio_value(&mut st.font.vert, VertAlign::Superscript, "Superscript");
+-                ui.radio_value(&mut st.font.vert, VertAlign::Subscript, "Subscript");
++                ui.radio_value(&mut st.font.vert, VertAlign::Baseline, tr(ui, "Normal"));
++                ui.radio_value(&mut st.font.vert, VertAlign::Superscript, tr(ui, "Superscript"));
++                ui.radio_value(&mut st.font.vert, VertAlign::Subscript, tr(ui, "Subscript"));
+             });
+-            ui.label("Color:");
++            ui.label(tr(ui, "Color:"));
+             let colors = app.session.active().map(|doc| doc.wb.theme.colors).unwrap_or_default();
+             if let Some(c) = crate::widgets::color_palette(ui, &colors, "Automatic") {
+                 st.font.color =
+@@ -1472,10 +1473,10 @@
+             use gridcraft_engine::model::{BorderLine, BorderStyle};
+             let line = BorderLine { style: BorderStyle::Thin, color: gridcraft_engine::model::Color::Auto };
+             ui.horizontal(|ui| {
+-                if ui.button("None").clicked() {
++                if ui.button(tr(ui, "None")).clicked() {
+                     st.borders = Default::default();
+                 }
+-                if ui.button("Outline").clicked() {
++                if ui.button(tr(ui, "Outline")).clicked() {
+                     st.borders.top = line;
+                     st.borders.bottom = line;
+                     st.borders.left = line;
+@@ -1491,7 +1492,7 @@
+                 ("Diagonal ↗", &mut st.borders.diag_up),
+             ] {
+                 ui.horizontal(|ui| {
+-                    ui.label(format!("{n}:"));
++                    ui.label(format!("{}:", tr(ui, n)));
+                     for (s, label) in [
+                         (BorderStyle::None, "none"),
+                         (BorderStyle::Thin, "thin"),
+@@ -1501,7 +1502,7 @@
+                         (BorderStyle::Dotted, "dotted"),
+                         (BorderStyle::Double, "double"),
+                     ] {
+-                        let response = ui.selectable_label(slot.style == s, label);
++                        let response = ui.selectable_label(slot.style == s, tr(ui, label));
+                         response
+                             .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::SelectableLabel, ui.is_enabled(), format!("{n} {label}")));
+                         if response.clicked() {
+@@ -1515,7 +1516,7 @@
+         }
+         "Fill" => {
+             let colors = app.session.active().map(|doc| doc.wb.theme.colors).unwrap_or_default();
+-            ui.label("Background Color:");
++            ui.label(tr(ui, "Background Color:"));
+             if let Some(c) = crate::widgets::color_palette(ui, &colors, "No Color") {
+                 st.fill = if c == "none" {
+                     Default::default()
+@@ -1525,10 +1526,10 @@
+             }
+         }
+         "Protection" => {
+-            ui.checkbox(&mut st.protection.locked, "Locked");
+-            ui.checkbox(&mut st.protection.hidden, "Hidden");
++            ui.checkbox(&mut st.protection.locked, tr(ui, "Locked"));
++            ui.checkbox(&mut st.protection.hidden, tr(ui, "Hidden"));
+             ui.label(
+-                egui::RichText::new("Locking cells or hiding formulas has no effect until you protect the worksheet (Review › Protect Sheet).")
++                egui::RichText::new(tr(ui, "Locking cells or hiding formulas has no effect until you protect the worksheet (Review › Protect Sheet)."))
+                     .small(),
+             );
+         }
+@@ -1550,8 +1551,8 @@
+ 
+ fn insert_function(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm: &mut bool) {
+     ui.horizontal(|ui| {
+-        ui.label("Search:");
+-        let r = ui.add(egui::TextEdit::singleline(&mut d.search).desired_width(300.0).hint_text("e.g. lookup, average, date"));
++        ui.label(tr(ui, "Search:"));
++        let r = ui.add(egui::TextEdit::singleline(&mut d.search).desired_width(300.0).hint_text(tr(ui, "e.g. lookup, average, date")));
+         r.request_focus();
+     });
+     let locale = app.ui.language.formula_locale();
+@@ -1606,7 +1607,7 @@
+ fn find(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog) {
+     ui.horizontal(|ui| {
+         for tab in ["Find", "Replace"] {
+-            if ui.selectable_label(d.tab == tab, tab).clicked() {
++            if ui.selectable_label(d.tab == tab, tr(ui, tab)).clicked() {
+                 d.tab = tab.into();
+             }
+         }
+@@ -1614,12 +1615,12 @@
+     let mut what = d.values.get("what").and_then(Json::as_str).unwrap_or("").to_string();
+     let mut with = d.values.get("with").and_then(Json::as_str).unwrap_or("").to_string();
+     ui.horizontal(|ui| {
+-        ui.label("Find what:");
++        ui.label(tr(ui, "Find what:"));
+         ui.add(egui::TextEdit::singleline(&mut what).desired_width(260.0));
+     });
+     if d.tab == "Replace" {
+         ui.horizontal(|ui| {
+-            ui.label("Replace with:");
++            ui.label(tr(ui, "Replace with:"));
+             ui.add(egui::TextEdit::singleline(&mut with).desired_width(244.0));
+         });
+     }
+@@ -1627,9 +1628,9 @@
+     let mut whole = d.values.get("wholeCell").and_then(Json::as_bool).unwrap_or(false);
+     let mut wb = d.values.get("within").and_then(Json::as_str) == Some("workbook");
+     ui.horizontal(|ui| {
+-        ui.checkbox(&mut case, "Match case");
+-        ui.checkbox(&mut whole, "Match entire cell contents");
+-        ui.checkbox(&mut wb, "Within workbook");
++        ui.checkbox(&mut case, tr(ui, "Match case"));
++        ui.checkbox(&mut whole, tr(ui, "Match entire cell contents"));
++        ui.checkbox(&mut wb, tr(ui, "Within workbook"));
+     });
+     d.values.insert("what".into(), json!(what));
+     d.values.insert("with".into(), json!(with));
+@@ -1639,16 +1640,16 @@
+     let base = json!({"what": what, "matchCase": case, "wholeCell": whole, "within": if wb { "workbook" } else { "sheet" }});
+     ui.horizontal(|ui| {
+         if d.tab == "Replace" {
+-            if ui.button("Replace All").clicked() {
++            if ui.button(tr(ui, "Replace All")).clicked() {
+                 let mut p = base.clone();
+                 p["with"] = json!(with);
+                 p["all"] = json!(true);
+                 match app.run("edit.replace", p) {
+-                    Ok(r) => app.toast = Some((format!("All done. We made {} replacements.", r["replaced"]), crate::now_ms())),
++                    Ok(r) => app.toast = Some((format!("{}: {}", tr(ui, "Replacements made"), r["replaced"]), crate::now_ms())),
+                     Err(e) => app.message = Some(("Find and Replace".into(), crate::clean_error(&e))),
+                 }
+             }
+-            if ui.button("Replace").clicked() {
++            if ui.button(tr(ui, "Replace")).clicked() {
+                 let mut p = base.clone();
+                 p["with"] = json!(with);
+                 p["all"] = json!(false);
+@@ -1656,12 +1657,12 @@
+                 let _ = app.run("edit.find", base.clone());
+             }
+         }
+-        if ui.button("Find All").clicked() {
++        if ui.button(tr(ui, "Find All")).clicked() {
+             let mut p = base.clone();
+             p["all"] = json!(true);
+             d.result = app.run("edit.find", p).ok();
+         }
+-        if ui.button("Find Next").clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
++        if ui.button(tr(ui, "Find Next")).clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+             if let Err(e) = app.run("edit.find", base.clone()) {
+                 app.message = Some(("Find and Replace".into(), crate::clean_error(&e)));
+             }
+@@ -1672,7 +1673,7 @@
+         && let Some(list) = r["results"].as_array()
+     {
+         ui.separator();
+-        ui.label(format!("{} cell(s) found", list.len()));
++        ui.label(format!("{}: {}", tr(ui, "Cells found"), list.len()));
+         egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+             for item in list {
+                 let label = format!(
+@@ -1702,11 +1703,11 @@
+     }
+     let mut r = d.values.get("reference").and_then(Json::as_str).unwrap_or("").to_string();
+     ui.horizontal(|ui| {
+-        ui.label("Reference:");
++        ui.label(tr(ui, "Reference:"));
+         ui.text_edit_singleline(&mut r).request_focus();
+     });
+     d.values.insert("reference".into(), json!(r.clone()));
+-    if ui.button("Special…").clicked() {
++    if ui.button(tr(ui, "Special…")).clicked() {
+         app.open_dialog("goToSpecial", json!({}));
+         return;
+     }
+@@ -1723,34 +1724,34 @@
+ 
+ fn sort(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm: &mut bool) {
+     let mut header = d.values.get("header").and_then(Json::as_bool).unwrap_or(true);
+-    ui.checkbox(&mut header, "My list has headers");
++    ui.checkbox(&mut header, tr(ui, "My list has headers"));
+     d.values.insert("header".into(), json!(header));
+     let mut levels: Vec<Json> = d.values.get("levels").and_then(Json::as_array).cloned().unwrap_or_default();
+     let mut remove = None;
+     for (i, lv) in levels.iter_mut().enumerate() {
+         ui.horizontal(|ui| {
+-            ui.label(if i == 0 { "Sort by" } else { "Then by" });
++            ui.label(tr(ui, if i == 0 { "Sort by" } else { "Then by" }));
+             let mut col = lv["column"].as_str().unwrap_or("A").to_string();
+             ui.add(egui::TextEdit::singleline(&mut col).desired_width(50.0));
+             lv["column"] = json!(col.to_ascii_uppercase());
+             let mut by = lv["by"].as_str().unwrap_or("values").to_string();
+             egui::ComboBox::from_id_salt(("by", i))
+-                .selected_text(match by.as_str() {
++                .selected_text(tr(ui, match by.as_str() {
+                     "cellColor" => "Cell Color",
+                     "fontColor" => "Font Color",
+                     _ => "Cell Values",
+-                })
++                }))
+                 .show_ui(ui, |ui| {
+-                    ui.selectable_value(&mut by, "values".into(), "Cell Values");
+-                    ui.selectable_value(&mut by, "cellColor".into(), "Cell Color");
+-                    ui.selectable_value(&mut by, "fontColor".into(), "Font Color");
++                    ui.selectable_value(&mut by, "values".into(), tr(ui, "Cell Values"));
++                    ui.selectable_value(&mut by, "cellColor".into(), tr(ui, "Cell Color"));
++                    ui.selectable_value(&mut by, "fontColor".into(), tr(ui, "Font Color"));
+                 });
+             lv["by"] = json!(by);
+             let mut desc = lv["order"].as_str() == Some("desc");
+-            ui.radio_value(&mut desc, false, "A to Z");
+-            ui.radio_value(&mut desc, true, "Z to A");
++            ui.radio_value(&mut desc, false, tr(ui, "A to Z"));
++            ui.radio_value(&mut desc, true, tr(ui, "Z to A"));
+             lv["order"] = json!(if desc { "desc" } else { "asc" });
+-            if ui.small_button("✕").clicked() {
++            if ui.small_button(tr(ui, "✕")).clicked() {
+                 remove = Some(i);
+             }
+         });
+@@ -1760,7 +1761,7 @@
+     {
+         levels.remove(i);
+     }
+-    if ui.button("+ Add Level").clicked() {
++    if ui.button(tr(ui, "+ Add Level")).clicked() {
+         levels.push(json!({"column": "B", "order": "asc"}));
+     }
+     d.values.insert("levels".into(), Json::Array(levels.clone()));
+@@ -1780,10 +1781,10 @@
+     let selected = names.get(d.list_index).cloned();
+     let field = |n: &Json, k: &str| n.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+     ui.horizontal(|ui| {
+-        if ui.button("New…").clicked() {
++        if ui.button(tr(ui, "New…")).clicked() {
+             app.open_dialog("defineName", json!({}));
+         }
+-        if ui.add_enabled(selected.is_some(), egui::Button::new("Edit…")).clicked()
++        if ui.add_enabled(selected.is_some(), egui::Button::new(tr(ui, "Edit…"))).clicked()
+             && let Some(n) = &selected
+         {
+             app.open_dialog(
+@@ -1794,7 +1795,7 @@
+                 }),
+             );
+         }
+-        if ui.add_enabled(selected.is_some(), egui::Button::new("Delete")).clicked()
++        if ui.add_enabled(selected.is_some(), egui::Button::new(tr(ui, "Delete"))).clicked()
+             && let Some(n) = &selected
+         {
+             app.run_or_alert("formulas.deleteName", json!({"name": field(n, "name"), "scope": field(n, "scope")}));
+@@ -1803,13 +1804,13 @@
+     ui.add_space(4.0);
+     egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+         egui::Grid::new("names").striped(true).num_columns(4).show(ui, |ui| {
+-            ui.strong("Name");
+-            ui.strong("Value");
+-            ui.strong("Refers To");
+-            ui.strong("Scope");
++            ui.strong(tr(ui, "Name"));
++            ui.strong(tr(ui, "Value"));
++            ui.strong(tr(ui, "Refers To"));
++            ui.strong(tr(ui, "Scope"));
+             ui.end_row();
+             if names.is_empty() {
+-                ui.label(egui::RichText::new("No names defined").italics());
++                ui.label(egui::RichText::new(tr(ui, "No names defined")).italics());
+                 ui.end_row();
+             }
+             for (i, n) in names.iter().enumerate() {
+@@ -1825,7 +1826,7 @@
+     });
+     ui.add_space(8.0);
+     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+-        if ui.button(" Close ").clicked() {
++        if ui.button(tr(ui, " Close ")).clicked() {
+             *open = false;
+         }
+     });
+@@ -1889,7 +1890,7 @@
+ fn recommended_charts(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm: &mut bool, open: &mut bool) {
+     ui.horizontal(|ui| {
+         for tab in ["Recommended Charts", "All Charts"] {
+-            if ui.selectable_label(d.tab == tab, tab).clicked() && d.tab != tab {
++            if ui.selectable_label(d.tab == tab, tr(ui, tab)).clicked() && d.tab != tab {
+                 d.tab = tab.to_string();
+                 select_chart(d, 0);
+             }
+@@ -1907,7 +1908,7 @@
+                         .horizontal(|ui| {
+                             let (r, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
+                             icons::paint(ui.painter(), r.shrink(2.0), chart_icon(kind), t.text);
+-                            ui.selectable_label(i == d.list_index, label.as_str())
++                            ui.selectable_label(i == d.list_index, tr(ui, label.as_str()))
+                         })
+                         .inner;
+                     if resp.clicked() {
+@@ -1954,7 +1955,7 @@
+ fn select_data(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm: &mut bool, open: &mut bool) {
+     let text = |d: &Dialog, k: &str| d.values.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+     let edit = |ui: &mut egui::Ui, d: &mut Dialog, key: &str, label: &str| {
+-        ui.label(label);
++        ui.label(tr(ui, label));
+         let mut v = text(d, key);
+         if ui.add(egui::TextEdit::singleline(&mut v).desired_width(420.0)).changed() {
+             d.values.insert(key.into(), json!(v));
+@@ -1962,7 +1963,7 @@
+     };
+     edit(ui, d, "range", "Chart data range:");
+     ui.add_space(6.0);
+-    ui.strong("Legend Entries (Series)");
++    ui.strong(tr(ui, "Legend Entries (Series)"));
+     let names: Vec<String> =
+         d.values.get("names").and_then(Json::as_array).map(|a| a.iter().map(|n| n.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default();
+     let mut remove: Vec<u64> =
+@@ -1976,10 +1977,10 @@
+                 let label = if name.is_empty() { format!("Series{}", i + 1) } else { name.clone() };
+                 ui.label(if removed { egui::RichText::new(label).strikethrough().weak() } else { egui::RichText::new(label) });
+                 if removed {
+-                    if ui.small_button("Keep").clicked() {
++                    if ui.small_button(tr(ui, "Keep")).clicked() {
+                         remove.retain(|x| *x != i);
+                     }
+-                } else if ui.add_enabled(kept > 1, egui::Button::new("Remove").small()).clicked() {
++                } else if ui.add_enabled(kept > 1, egui::Button::new(tr(ui, "Remove")).small()).clicked() {
+                     remove.push(i);
+                 }
+             });
+@@ -2018,7 +2019,7 @@
+     let list = app.session.run("home.manageRules", json!({})).unwrap_or(Json::Null);
+     let rules = list["rules"].as_array().cloned().unwrap_or_default();
+     if rules.is_empty() {
+-        ui.label("There are no conditional formatting rules on this sheet.");
++        ui.label(tr(ui, "There are no conditional formatting rules on this sheet."));
+     }
+     for (i, r) in rules.iter().enumerate() {
+         ui.horizontal(|ui| {
+@@ -2028,13 +2029,13 @@
+                 i + 1,
+                 r["ranges"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(",")).unwrap_or_default()
+             ));
+-            if ui.small_button("▲").clicked() {
++            if ui.small_button(tr(ui, "▲")).clicked() {
+                 app.run_or_alert("home.manageRules", json!({"moveUp": i}));
+             }
+-            if ui.small_button("▼").clicked() {
++            if ui.small_button(tr(ui, "▼")).clicked() {
+                 app.run_or_alert("home.manageRules", json!({"moveDown": i}));
+             }
+-            if ui.small_button("Delete").clicked() {
++            if ui.small_button(tr(ui, "Delete")).clicked() {
+                 app.run_or_alert("home.manageRules", json!({"delete": i}));
+             }
+         });
+@@ -2042,16 +2043,17 @@
+ }
+ 
+ fn command_search(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm: &mut bool) {
+-    let r = ui.add(egui::TextEdit::singleline(&mut d.search).desired_width(480.0).hint_text("Type a command, e.g. freeze, chart, bold…"));
++    let r = ui.add(egui::TextEdit::singleline(&mut d.search).desired_width(480.0).hint_text(tr(ui, "Type a command, e.g. freeze, chart, bold…")));
+     r.request_focus();
+-    let q = d.search.to_ascii_lowercase();
++    let q = d.search.to_lowercase();
++    let language = crate::i18n::current(ui.ctx());
+     let cmds: Vec<(String, String, String)> = app
+         .session
+         .commands()
+         .into_iter()
+         .filter(|c| c.enabled)
+-        .filter(|c| q.is_empty() || c.label.to_ascii_lowercase().contains(&q) || c.id.to_ascii_lowercase().contains(&q))
+-        .map(|c| (c.id.to_string(), c.label.to_string(), c.menu.join(" › ")))
++        .filter(|c| q.is_empty() || language.tr(c.label).to_lowercase().contains(&q) || c.label.to_ascii_lowercase().contains(&q) || c.id.to_ascii_lowercase().contains(&q))
++        .map(|c| (c.id.to_string(), language.tr(c.label).to_string(), c.menu.iter().map(|m| language.tr(m)).collect::<Vec<_>>().join(" › ")))
+         .take(40)
+         .collect();
+     if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
+@@ -2084,13 +2086,13 @@
+     let get = |k: &str| d.values.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+     let (mut set, mut to, mut changing) = (get("set"), get("to"), get("changing"));
+     egui::Grid::new("gs").show(ui, |ui| {
+-        ui.label("Set cell:");
++        ui.label(tr(ui, "Set cell:"));
+         ui.text_edit_singleline(&mut set);
+         ui.end_row();
+-        ui.label("To value:");
++        ui.label(tr(ui, "To value:"));
+         ui.text_edit_singleline(&mut to);
+         ui.end_row();
+-        ui.label("By changing cell:");
++        ui.label(tr(ui, "By changing cell:"));
+         ui.text_edit_singleline(&mut changing);
+         ui.end_row();
+     });
+@@ -2101,7 +2103,7 @@
+     ok_cancel(ui, confirm, &mut open);
+     if *confirm {
+         match app.run("data.goalSeek", json!({"set": set, "to": to.parse::<f64>().unwrap_or(0.0), "changing": changing})) {
+-            Ok(r) => app.toast = Some((format!("Goal Seeking found a solution: {}", r["value"]), crate::now_ms())),
++            Ok(r) => app.toast = Some((format!("{}: {}", tr(ui, "Solution found"), r["value"]), crate::now_ms())),
+             Err(e) => app.message = Some(("Goal Seek".into(), crate::clean_error(&e))),
+         }
+     }
+@@ -2189,14 +2191,14 @@
+ fn analysis_toolpak(app: &mut SheetApp, ui: &mut egui::Ui, d: &mut Dialog, confirm: &mut bool, open: &mut bool) {
+     use gridcraft_engine::cmd::analysis::TOOLS;
+     if d.values.get("askOverwrite").and_then(Json::as_bool) == Some(true) {
+-        ui.label("The output range already holds data. Replace it with the report?");
++        ui.label(tr(ui, "The output range already holds data. Replace it with the report?"));
+         ui.horizontal(|ui| {
+-            if ui.button("Replace").clicked() {
++            if ui.button(tr(ui, "Replace")).clicked() {
+                 d.values.remove("askOverwrite");
+                 d.values.insert("overwrite".into(), json!(true));
+                 *confirm = true;
+             }
+-            if ui.button("Cancel").clicked() {
++            if ui.button(tr(ui, "Cancel")).clicked() {
+                 d.values.remove("askOverwrite");
+             }
+         });
+@@ -2204,12 +2206,12 @@
+     }
+     let tool = d.values.get("tool").and_then(Json::as_str).unwrap_or("").to_string();
+     let Some((_, label)) = TOOLS.iter().find(|(id, _)| *id == tool) else {
+-        ui.label(egui::RichText::new("Analysis Tools").strong());
++        ui.label(egui::RichText::new(tr(ui, "Analysis Tools")).strong());
+         let pick = d.values.get("pick").and_then(Json::as_str).unwrap_or("").to_string();
+         let mut chosen = false;
+         egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+             for (id, label) in TOOLS {
+-                let r = ui.selectable_label(pick == *id, *label);
++                let r = ui.selectable_label(pick == *id, tr(ui, label));
+                 if r.clicked() {
+                     d.values.insert("pick".into(), json!(id));
+                 }
+@@ -2231,7 +2233,7 @@
+     d.fields = toolpak_fields(&tool);
+     form_fields(ui, d);
+     ui.separator();
+-    ui.label(egui::RichText::new("Output options").strong());
++    ui.label(egui::RichText::new(tr(ui, "Output options")).strong());
+     let to = d.values.get("outputTo").and_then(Json::as_str).unwrap_or("newSheet").to_string();
+     for (key, choice, text_label) in [("output", "range", "Output Range:"), ("newSheet", "newSheet", "New Worksheet Ply:")] {
+         ui.horizontal(|ui| {
+@@ -2259,12 +2261,12 @@
+         }
+     };
+     ui.horizontal(|ui| {
+-        ui.label("Set Objective:");
++        ui.label(tr(ui, "Set Objective:"));
+         edit(ui, d, "objective", 200.0);
+     });
+     let goal = text(d, "goal");
+     ui.horizontal(|ui| {
+-        ui.label("To:");
++        ui.label(tr(ui, "To:"));
+         for (g, label) in [("max", "Max"), ("min", "Min"), ("value", "Value Of:")] {
+             if ui.radio(goal == g, label).clicked() {
+                 d.values.insert("goal".into(), json!(g));
+@@ -2272,9 +2274,9 @@
+         }
+         edit(ui, d, "value", 80.0);
+     });
+-    ui.label("By Changing Variable Cells:");
++    ui.label(tr(ui, "By Changing Variable Cells:"));
+     edit(ui, d, "variables", 420.0);
+-    ui.label("Subject to the Constraints:");
++    ui.label(tr(ui, "Subject to the Constraints:"));
+     let list: Vec<String> = d
+         .values
+         .get("constraints")
+@@ -2304,7 +2306,7 @@
+         if !matches!(op.as_str(), "int" | "bin") {
+             edit(ui, d, "newRhs", 110.0);
+         }
+-        if ui.button("Add").clicked() {
++        if ui.button(tr(ui, "Add")).clicked() {
+             let lhs = text(d, "newLhs");
+             if !lhs.trim().is_empty() {
+                 let rhs = if matches!(op.as_str(), "int" | "bin") { String::new() } else { format!(" {}", text(d, "newRhs").trim()) };
+@@ -2315,7 +2317,7 @@
+                 d.values.insert("newRhs".into(), json!(""));
+             }
+         }
+-        if ui.add_enabled(d.list_index < list.len(), egui::Button::new("Delete")).clicked() {
++        if ui.add_enabled(d.list_index < list.len(), egui::Button::new(tr(ui, "Delete"))).clicked() {
+             let mut list = list.clone();
+             if d.list_index < list.len() {
+                 list.remove(d.list_index);
+@@ -2324,37 +2326,37 @@
+         }
+     });
+     let mut nonneg = d.values.get("nonNegative").and_then(Json::as_bool).unwrap_or(true);
+-    if ui.checkbox(&mut nonneg, "Make Unconstrained Variables Non-Negative").changed() {
++    if ui.checkbox(&mut nonneg, tr(ui, "Make Unconstrained Variables Non-Negative")).changed() {
+         d.values.insert("nonNegative".into(), json!(nonneg));
+     }
+     let method = text(d, "method");
+     ui.horizontal(|ui| {
+-        ui.label("Select a Solving Method:");
++        ui.label(tr(ui, "Select a Solving Method:"));
+         let label = |m: &str| if m == "simplex" { "Simplex LP" } else { "GRG Nonlinear" };
+-        egui::ComboBox::from_id_salt("solverMethod").selected_text(label(&method)).show_ui(ui, |ui| {
++        egui::ComboBox::from_id_salt("solverMethod").selected_text(tr(ui, label(&method))).show_ui(ui, |ui| {
+             for m in ["grg", "simplex"] {
+-                if ui.selectable_label(method == m, label(m)).clicked() {
++                if ui.selectable_label(method == m, tr(ui, label(m))).clicked() {
+                     d.values.insert("method".into(), json!(m));
+                 }
+             }
+         });
+     });
+     ui.label(
+-        egui::RichText::new(if method == "simplex" {
++        egui::RichText::new(tr(ui, if method == "simplex" {
+             "Simplex LP: for linear models; integer and binary constraints by branch and bound."
+         } else {
+             "GRG Nonlinear: a local optimum of a smooth model, from the current values."
+-        })
++        }))
+         .small(),
+     );
+     ui.add_space(8.0);
+     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+         let solve =
+-            ui.add(egui::Button::new(egui::RichText::new("  Solve  ").color(Color32::WHITE)).fill(crate::theme::Tokens::get(ui.ctx()).accent));
++            ui.add(egui::Button::new(egui::RichText::new(tr(ui, "  Solve  ")).color(Color32::WHITE)).fill(crate::theme::Tokens::get(ui.ctx()).accent));
+         if solve.clicked() && !text(d, "objective").trim().is_empty() {
+             *confirm = true;
+         }
+-        if ui.button(" Close ").clicked() {
++        if ui.button(tr(ui, " Close ")).clicked() {
+             *open = false;
+         }
+     });
+@@ -2368,10 +2370,10 @@
+     let restore = d.values.get("restore").and_then(Json::as_bool).unwrap_or(false);
+     if changed {
+         ui.add_space(4.0);
+-        if ui.radio(!restore, "Keep Solver Solution").clicked() {
++        if ui.radio(!restore, tr(ui, "Keep Solver Solution")).clicked() {
+             d.values.insert("restore".into(), json!(false));
+         }
+-        if ui.radio(restore, "Restore Original Values").clicked() {
++        if ui.radio(restore, tr(ui, "Restore Original Values")).clicked() {
+             d.values.insert("restore".into(), json!(true));
+         }
+     }
+@@ -2394,19 +2396,19 @@
+     }
+     let issues = r["issues"].as_array().cloned().unwrap_or_default();
+     let Some(it) = issues.get(d.list_index) else {
+-        ui.label("The spelling check is complete for the entire sheet.");
+-        if ui.button("OK").clicked() {
++        ui.label(tr(ui, "The spelling check is complete for the entire sheet."));
++        if ui.button(tr(ui, "OK")).clicked() {
+             *open = false;
+         }
+         return;
+     };
+     let word = it["word"].as_str().unwrap_or("").to_string();
+     let cell = it["cell"].as_str().unwrap_or("").to_string();
+-    ui.label(format!("Not in Dictionary ({cell}):"));
++    ui.label(format!("{} ({cell}):", tr(ui, "Not in Dictionary")));
+     ui.label(egui::RichText::new(&word).strong().color(Color32::from_rgb(0xC4, 0x2B, 0x1C)));
+     let sugg: Vec<String> =
+         it["suggestions"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+-    ui.label("Suggestions:");
++    ui.label(tr(ui, "Suggestions:"));
+     let mut pick = d.values.get("pick").and_then(Json::as_str).unwrap_or("").to_string();
+     for s in &sugg {
+         if ui.selectable_label(pick == *s, s).clicked() {
+@@ -2414,24 +2416,24 @@
+         }
+     }
+     if sugg.is_empty() {
+-        ui.label(egui::RichText::new("(No suggestions)").italics());
++        ui.label(egui::RichText::new(tr(ui, "(No suggestions)")).italics());
+     }
+     d.values.insert("pick".into(), json!(pick.clone()));
+     let _ = app.session.run("selection.set", json!({"cell": cell}));
+     ui.horizontal(|ui| {
+-        if ui.button("Ignore Once").clicked() {
++        if ui.button(tr(ui, "Ignore Once")).clicked() {
+             d.list_index += 1;
+         }
+-        if ui.button("Add to Dictionary").clicked() {
++        if ui.button(tr(ui, "Add to Dictionary")).clicked() {
+             let _ = app.session.run("review.addToDictionary", json!({"word": word}));
+             d.list_index += 1;
+         }
+         if !pick.is_empty() {
+-            if ui.button("Change").clicked() {
++            if ui.button(tr(ui, "Change")).clicked() {
+                 app.run_or_alert("review.changeSpelling", json!({"cell": cell, "word": word, "to": pick}));
+                 d.list_index += 1;
+             }
+-            if ui.button("Change All").clicked() {
++            if ui.button(tr(ui, "Change All")).clicked() {
+                 app.run_or_alert("review.changeSpelling", json!({"word": word, "to": pick, "all": true}));
+                 d.list_index += 1;
+             }
+--- a/crates/ui-egui/src/formula_bar.rs
++++ b/crates/ui-egui/src/formula_bar.rs
+@@ -1,5 +1,6 @@
+ //! The formula bar (Name Box, ✕ ✓ fx, formula field) and the shared cell editor widget.
+ 
++use crate::i18n::label as tr;
+ use egui::{Color32, FontId, Key, Rect, Sense, Stroke, StrokeKind, TextEdit, pos2, vec2};
+ use serde_json::json;
+ 
+@@ -143,7 +144,7 @@
+     let r = ui.interact(mb, id.with("drop"), Sense::click());
+     egui::Popup::menu(&r).show(|ui| {
+         if names.is_empty() {
+-            ui.label(egui::RichText::new("No names defined").italics());
++            ui.label(egui::RichText::new(tr(ui, "No names defined")).italics());
+         }
+         for n in names {
+             if ui.button(&n).clicked() {
+@@ -390,7 +391,7 @@
+                                 ui.label(egui::RichText::new(format!("{} ", ed.locale.list_separator())).font(theme::ui_font(12.0)));
+                             }
+                         }
+-                        ui.label(egui::RichText::new(")").font(theme::ui_font(12.0)));
++                        ui.label(egui::RichText::new(tr(ui, ")")).font(theme::ui_font(12.0)));
+                     });
+                 }
+             });
+--- a/crates/ui-egui/src/grid.rs
++++ b/crates/ui-egui/src/grid.rs
+@@ -12,6 +12,7 @@
+ use serde_json::json;
+ 
+ use crate::SheetApp;
++use crate::i18n::label as tr;
+ use crate::editor::{EditState, REF_COLORS};
+ use crate::theme::{self, Tokens};
+ 
+@@ -2513,20 +2514,20 @@
+     let response = area.show(ui.ctx(), |ui| {
+         egui::Frame::popup(ui.style()).show(ui, |ui| {
+             ui.set_width(230.0);
+-            if ui.button("↑  Sort Ascending").clicked() {
++            if ui.button(tr(ui, "↑  Sort Ascending")).clicked() {
+                 let _ = app.run("data.sortAscending", json!({"column": col_to_letters(col)}));
+                 close = true;
+             }
+-            if ui.button("↓  Sort Descending").clicked() {
++            if ui.button(tr(ui, "↓  Sort Descending")).clicked() {
+                 let _ = app.run("data.sortDescending", json!({"column": col_to_letters(col)}));
+                 close = true;
+             }
+             ui.separator();
+-            ui.label(egui::RichText::new("Filter").strong());
++            ui.label(egui::RichText::new(tr(ui, "Filter")).strong());
+             let mut checks: Vec<(String, bool)> = ui.ctx().data_mut(|d| d.get_temp::<Vec<(String, bool)>>(key)).unwrap_or(values.clone());
+             // A search narrows the list; Select All and Apply then only cover the matches.
+             let mut search: String = ui.ctx().data_mut(|d| d.get_temp(search_key)).unwrap_or_default();
+-            let field = ui.add(egui::TextEdit::singleline(&mut search).hint_text("Search").desired_width(f32::INFINITY));
++            let field = ui.add(egui::TextEdit::singleline(&mut search).hint_text(tr(ui, "Search")).desired_width(f32::INFINITY));
+             if !was_open {
+                 field.request_focus();
+             }
+@@ -2552,11 +2553,11 @@
+             let checks: Vec<(String, bool)> = checks.iter().map(|(v, on)| (v.clone(), *on && matches(v))).collect();
+             ui.separator();
+             ui.horizontal(|ui| {
+-                if ui.button("Clear Filter").clicked() {
++                if ui.button(tr(ui, "Clear Filter")).clicked() {
+                     let _ = app.run("data.filterBy", json!({"column": col_to_letters(col), "clear": true}));
+                     close = true;
+                 }
+-                if ui.button("Apply").clicked() {
++                if ui.button(tr(ui, "Apply")).clicked() {
+                     let blanks = checks.iter().any(|(v, on)| v == "(Blanks)" && *on);
+                     let vals: Vec<String> = checks.iter().filter(|(v, on)| *on && v != "(Blanks)").map(|(v, _)| v.clone()).collect();
+                     let p = if checks.iter().all(|(_, b)| *b) {
+--- a/crates/ui-egui/src/i18n.rs
++++ b/crates/ui-egui/src/i18n.rs
+@@ -672,3 +672,67 @@
+         }
+     }
+ }
++
++/// Translate interface captions only; workbook values and command identifiers are never passed here.
++pub fn label<'a>(ui: &egui::Ui, text: &'a str) -> &'a str {
++    current(ui.ctx()).tr(text.trim())
++}
++
++#[cfg(test)]
++mod russian_dialog_tests {
++    use super::*;
++
++    fn dialog_text(name: &str) -> (Vec<String>, crate::SheetApp) {
++        let mut app = crate::SheetApp::new(gridcraft_engine::Session::new(), Default::default());
++        app.run("file.new", serde_json::json!({})).unwrap();
++        app.ui.language = Language::Ru;
++        app.open_dialog(name, serde_json::json!({}));
++        let ctx = egui::Context::default();
++        set_current(&ctx, Language::Ru);
++        let mut texts = Vec::new();
++        fn collect(shape: &egui::epaint::Shape, texts: &mut Vec<String>) {
++            match shape {
++                egui::epaint::Shape::Text(t) => texts.push(t.galley.text().to_string()),
++                egui::epaint::Shape::Vec(shapes) => {
++                    for s in shapes { collect(s, texts); }
++                }
++                _ => {}
++            }
++        }
++        for _ in 0..3 {
++            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| crate::dialogs::show(&mut app, ui.ctx()));
++            output.textures_delta.clear();
++            for shape in output.shapes { collect(&shape.shape, &mut texts); }
++        }
++        (texts, app)
++    }
++
++    #[test]
++    fn russian_dialog_captions_keep_command_values_intact() {
++        let (texts, app) = dialog_text("insertCells");
++        for caption in ["Вставить", "Со сдвигом ячеек вниз", "Столбец целиком", "ОК", "Отмена"] {
++            assert!(texts.iter().any(|s| s == caption), "missing {caption}: {texts:?}");
++        }
++        assert_eq!(app.dialog.as_ref().unwrap().values["shift"], "down");
++        let (texts, _) = dialog_text("find");
++        for caption in ["Найти:", "Учитывать регистр", "Найти далее"] {
++            assert!(texts.iter().any(|s| s == caption), "missing {caption}: {texts:?}");
++        }
++        assert_eq!(Language::En.tr("Cancel"), "Cancel");
++        assert_eq!(Language::Ru.tr("Sheet1!A1"), "Sheet1!A1");
++    }
++}
++
++
++#[cfg(test)]
++mod russian_command_coverage_tests {
++    #[test]
++    fn every_engine_command_has_a_russian_caption() {
++        let missing: Vec<_> = gridcraft_engine::command_specs().into_iter()
++            .filter(|c| c.label.chars().any(|c| c.is_ascii_alphabetic()))
++            .filter(|c| !["GridCraft", "PDF", "CSV", "TSV", "JSON", "HTML"].contains(&c.label))
++            .filter(|c| super::Language::Ru.tr(c.label) == c.label)
++            .map(|c| c.label).collect();
++        assert!(missing.is_empty(), "Untranslated command captions: {missing:?}");
++    }
++}
+--- a/crates/ui-egui/src/panes.rs
++++ b/crates/ui-egui/src/panes.rs
+@@ -4,6 +4,7 @@
+ use serde_json::{Value as Json, json};
+ 
+ use crate::SheetApp;
++use crate::i18n::label as tr;
+ use crate::theme::{self, Tokens};
+ 
+ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
+@@ -26,7 +27,7 @@
+                 "formatChart" => "Format Chart Area",
+                 _ => "",
+             };
+-            ui.label(egui::RichText::new(title).font(theme::ui_bold(15.0)));
++            ui.label(egui::RichText::new(tr(ui, title)).font(theme::ui_bold(15.0)));
+             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                 if crate::widgets::icon_button(ui, crate::icons::Icon::Close, t.text_dim, "Close", vec2(22.0, 22.0)).clicked() {
+                     if pane == "comments" {
+@@ -52,7 +53,7 @@
+     let Some(sh) = d.wb.active() else { return };
+     let list: Vec<(String, gridcraft_engine::model::Comment)> = sh.comments.iter().map(|(c, m)| (c.a1(), m.clone())).collect();
+     if list.is_empty() {
+-        ui.label(egui::RichText::new("No comments on this sheet yet. Select a cell and choose New Comment.").italics());
++        ui.label(egui::RichText::new(tr(ui, "No comments on this sheet yet. Select a cell and choose New Comment.")).italics());
+     }
+     for (cell, c) in list {
+         egui::Frame::NONE
+@@ -69,7 +70,7 @@
+                     }
+                     ui.label(egui::RichText::new(&c.author).color(Color32::from_gray(90)));
+                     if c.resolved {
+-                        ui.label(egui::RichText::new("Resolved").small().color(Color32::from_rgb(0x10, 0x7C, 0x41)));
++                        ui.label(egui::RichText::new(tr(ui, "Resolved")).small().color(Color32::from_rgb(0x10, 0x7C, 0x41)));
+                     }
+                 });
+                 ui.label(&c.text);
+@@ -79,15 +80,15 @@
+                 let key = egui::Id::new(("reply", &cell));
+                 let mut draft: String = ui.ctx().data_mut(|m| m.get_temp(key)).unwrap_or_default();
+                 ui.horizontal(|ui| {
+-                    let r = ui.add(egui::TextEdit::singleline(&mut draft).hint_text("Reply…").desired_width(ui.available_width() - 120.0));
+-                    if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) || ui.small_button("Send").clicked()) && !draft.is_empty() {
++                    let r = ui.add(egui::TextEdit::singleline(&mut draft).hint_text(tr(ui, "Reply…")).desired_width(ui.available_width() - 120.0));
++                    if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) || ui.small_button(tr(ui, "Send")).clicked()) && !draft.is_empty() {
+                         app.run_or_alert("review.replyComment", json!({"cell": cell, "text": draft}));
+                         draft.clear();
+                     }
+-                    if ui.small_button(if c.resolved { "Reopen" } else { "Resolve" }).clicked() {
++                    if ui.small_button(tr(ui, if c.resolved { "Reopen" } else { "Resolve" })).clicked() {
+                         app.run_or_alert("review.resolveComment", json!({"cell": cell, "resolved": !c.resolved}));
+                     }
+-                    if ui.small_button("Delete").clicked() {
++                    if ui.small_button(tr(ui, "Delete")).clicked() {
+                         app.run_or_alert("review.deleteComment", json!({"cell": cell}));
+                     }
+                 });
+@@ -98,7 +99,7 @@
+ }
+ 
+ fn watch(app: &mut SheetApp, ui: &mut Ui) {
+-    if ui.button("Add Watch (active cell)").clicked()
++    if ui.button(tr(ui, "Add Watch (active cell)")).clicked()
+         && let Some(d) = app.session.active()
+         && let Some(sh) = d.wb.active()
+     {
+@@ -107,17 +108,17 @@
+     }
+     let list = app.session.run("formulas.watchWindow", json!({})).unwrap_or(Json::Null);
+     egui::Grid::new("watch_grid").striped(true).num_columns(4).show(ui, |ui| {
+-        ui.strong("Cell");
+-        ui.strong("Value");
+-        ui.strong("Formula");
+-        ui.label("");
++        ui.strong(tr(ui, "Cell"));
++        ui.strong(tr(ui, "Value"));
++        ui.strong(tr(ui, "Formula"));
++        ui.label(tr(ui, ""));
+         ui.end_row();
+         for w in list.as_array().cloned().unwrap_or_default() {
+             let cell = w["cell"].as_str().unwrap_or("").to_string();
+             ui.label(&cell);
+             ui.label(w["value"].as_str().unwrap_or(""));
+             ui.label(w["formula"].as_str().unwrap_or(""));
+-            if ui.small_button("✕").clicked() {
++            if ui.small_button(tr(ui, "✕")).clicked() {
+                 let _ = app.session.run("formulas.watchWindow", json!({"remove": cell}));
+             }
+             ui.end_row();
+@@ -129,7 +130,7 @@
+     let list = app.session.run("arrange.selectionPane", json!({})).unwrap_or(Json::Null);
+     let items = list.as_array().cloned().unwrap_or_default();
+     if items.is_empty() {
+-        ui.label(egui::RichText::new("There are no shapes, pictures or charts on this sheet.").italics());
++        ui.label(egui::RichText::new(tr(ui, "There are no shapes, pictures or charts on this sheet.")).italics());
+     }
+     for it in items.iter().rev() {
+         let kind = it["kind"].as_str().unwrap_or("").to_string();
+@@ -139,13 +140,13 @@
+             if ui.selectable_label(sel, it["name"].as_str().unwrap_or("")).clicked() {
+                 app.selected_chart = Some(id);
+             }
+-            if ui.small_button("▲").on_hover_text("Bring Forward").clicked() {
++            if ui.small_button(tr(ui, "▲")).on_hover_text(tr(ui, "Bring Forward")).clicked() {
+                 app.run_or_alert("arrange.bringForward", json!({"kind": kind, "id": id}));
+             }
+-            if ui.small_button("▼").on_hover_text("Send Backward").clicked() {
++            if ui.small_button(tr(ui, "▼")).on_hover_text(tr(ui, "Send Backward")).clicked() {
+                 app.run_or_alert("arrange.sendBackward", json!({"kind": kind, "id": id}));
+             }
+-            if ui.small_button("✕").on_hover_text("Delete").clicked() {
++            if ui.small_button(tr(ui, "✕")).on_hover_text(tr(ui, "Delete")).clicked() {
+                 app.run_or_alert("object.delete", json!({"kind": kind, "id": id}));
+             }
+         });
+@@ -154,21 +155,21 @@
+ 
+ fn format_chart(app: &mut SheetApp, ui: &mut Ui) {
+     let Some(id) = app.selected_chart else {
+-        ui.label(egui::RichText::new("Select a chart to format it.").italics());
++        ui.label(egui::RichText::new(tr(ui, "Select a chart to format it.")).italics());
+         return;
+     };
+     let Some(chart) = app.session.active().and_then(|d| d.wb.active().and_then(|s| s.charts.iter().find(|c| c.id == id).cloned())) else {
+-        ui.label("The chart no longer exists.");
++        ui.label(tr(ui, "The chart no longer exists."));
+         return;
+     };
+     let theme = app.session.active().map(|d| d.wb.theme.clone()).unwrap_or_default();
+-    ui.collapsing("Chart Title", |ui| {
++    ui.collapsing(tr(ui, "Chart Title"), |ui| {
+         let field = egui::Id::new(("gridcraft.chart_title", id));
+         if let Some(title) = crate::widgets::committed_text(ui, field, chart.title.as_deref().unwrap_or(""), None) {
+             app.run_or_alert("chart.set", json!({"chart": id, "title": title}));
+         }
+     });
+-    ui.collapsing("Chart Type", |ui| {
++    ui.collapsing(tr(ui, "Chart Type"), |ui| {
+         ui.horizontal_wrapped(|ui| {
+             for (l, k, s) in [
+                 ("Column", "column", ""),
+@@ -181,47 +182,47 @@
+                 ("Scatter", "scatter", ""),
+                 ("Radar", "radar", ""),
+             ] {
+-                if ui.button(l).clicked() {
++                if ui.button(tr(ui, l)).clicked() {
+                     app.run_or_alert("chart.set", json!({"chart": id, "type": k, "subtype": s}));
+                 }
+             }
+         });
+     });
+-    ui.collapsing("Legend", |ui| {
++    ui.collapsing(tr(ui, "Legend"), |ui| {
+         ui.horizontal(|ui| {
+             for (l, v) in [("None", "none"), ("Bottom", "bottom"), ("Top", "top"), ("Left", "left"), ("Right", "right")] {
+                 let cur = format!("{:?}", chart.legend).eq_ignore_ascii_case(v);
+-                if ui.selectable_label(cur, l).clicked() {
++                if ui.selectable_label(cur, tr(ui, l)).clicked() {
+                     app.run_or_alert("chart.set", json!({"chart": id, "legend": v}));
+                 }
+             }
+         });
+     });
+-    ui.collapsing("Elements", |ui| {
++    ui.collapsing(tr(ui, "Elements"), |ui| {
+         let mut dl = chart.data_labels;
+-        if ui.checkbox(&mut dl, "Data Labels").changed() {
++        if ui.checkbox(&mut dl, tr(ui, "Data Labels")).changed() {
+             app.run_or_alert("chart.set", json!({"chart": id, "dataLabels": dl}));
+         }
+         let mut gl = chart.gridlines;
+-        if ui.checkbox(&mut gl, "Gridlines").changed() {
++        if ui.checkbox(&mut gl, tr(ui, "Gridlines")).changed() {
+             app.run_or_alert("chart.set", json!({"chart": id, "gridlines": gl}));
+         }
+         ui.horizontal(|ui| {
+-            ui.label("Horizontal axis title:");
++            ui.label(tr(ui, "Horizontal axis title:"));
+             let field = egui::Id::new(("gridcraft.chart_x_title", id));
+             if let Some(xt) = crate::widgets::committed_text(ui, field, chart.x_title.as_deref().unwrap_or(""), None) {
+                 app.run_or_alert("chart.set", json!({"chart": id, "xTitle": if xt.is_empty() { Json::Null } else { json!(xt) }}));
+             }
+         });
+         ui.horizontal(|ui| {
+-            ui.label("Vertical axis title:");
++            ui.label(tr(ui, "Vertical axis title:"));
+             let field = egui::Id::new(("gridcraft.chart_y_title", id));
+             if let Some(yt) = crate::widgets::committed_text(ui, field, chart.y_title.as_deref().unwrap_or(""), None) {
+                 app.run_or_alert("chart.set", json!({"chart": id, "yTitle": if yt.is_empty() { Json::Null } else { json!(yt) }}));
+             }
+         });
+     });
+-    ui.collapsing("Series", |ui| {
++    ui.collapsing(tr(ui, "Series"), |ui| {
+         let data = app.session.active().map(|d| gridcraft_chart::resolve(&d.wb, d.wb.active_sheet, &chart));
+         for (i, s) in chart.series.iter().enumerate() {
+             let name = data.as_ref().and_then(|d| d.series.get(i)).map(|x| x.name.clone()).unwrap_or_else(|| format!("Series {}", i + 1));
+@@ -232,7 +233,7 @@
+                 ui.painter().rect_filled(r, 2.0, col);
+                 ui.label(&name);
+                 ui.label(egui::RichText::new(&s.values).small().color(Color32::from_gray(110)));
+-                ui.menu_button("Fill…", |ui| {
++                ui.menu_button(tr(ui, "Fill…"), |ui| {
+                     if let Some(c) = crate::widgets::color_palette(ui, &theme.colors, "Automatic") {
+                         app.run_or_alert(
+                             "chart.formatSelection",
+@@ -244,7 +245,7 @@
+             });
+         }
+     });
+-    ui.collapsing("Colors & Layout", |ui| {
++    ui.collapsing(tr(ui, "Colors & Layout"), |ui| {
+         ui.horizontal_wrapped(|ui| {
+             for p in ["colorful", "monochrome", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"] {
+                 if ui.button(p).clicked() {
+@@ -254,13 +255,13 @@
+         });
+         ui.horizontal(|ui| {
+             for n in 1..=6 {
+-                if ui.button(format!("Layout {n}")).clicked() {
++                if ui.button(format!("{} {n}", tr(ui, "Layout"))).clicked() {
+                     app.run_or_alert("chart.quickLayout", json!({"chart": id, "layout": n}));
+                 }
+             }
+         });
+     });
+-    ui.collapsing("Size", |ui| {
++    ui.collapsing(tr(ui, "Size"), |ui| {
+         // Keep the value being typed or dragged between frames; reloading it from the chart every frame threw the edit away.
+         let draft = egui::Id::new(("gridcraft.chart_size_draft", id));
+         let (mut w, mut h) = ui.data_mut(|d| d.get_temp::<(f32, f32)>(draft)).unwrap_or((chart.anchor.width, chart.anchor.height));
+--- a/crates/ui-egui/src/pivot_pane.rs
++++ b/crates/ui-egui/src/pivot_pane.rs
+@@ -2,6 +2,7 @@
+ //! report. Ticking a field adds it (text → Rows, numbers → Values); each area lists its fields
+ //! with move/remove menus. Everything runs `pivot.*` commands.
+ 
++use crate::i18n::label as tr;
+ use egui::{Color32, Ui, vec2};
+ use serde_json::{Value as Json, json};
+ 
+@@ -24,8 +25,8 @@
+         Err(_) => return,
+     };
+     egui::Panel::right("pivot_pane").default_size(280.0).resizable(true).frame(egui::Frame::NONE.fill(t.ribbon).inner_margin(10)).show(ui, |ui| {
+-        ui.label(egui::RichText::new("PivotTable Fields").font(theme::ui_bold(15.0)));
+-        ui.label(egui::RichText::new("Choose fields to add to report:").small().color(t.text_dim));
++        ui.label(egui::RichText::new(tr(ui, "PivotTable Fields")).font(theme::ui_bold(15.0)));
++        ui.label(egui::RichText::new(tr(ui, "Choose fields to add to report:")).small().color(t.text_dim));
+         ui.add_space(4.0);
+         let fields = info["fields"].as_array().cloned().unwrap_or_default();
+         egui::ScrollArea::vertical().max_height(220.0).id_salt("pv_fields").show(ui, |ui| {
+@@ -52,7 +53,7 @@
+             }
+         });
+         ui.separator();
+-        ui.label(egui::RichText::new("Use a field's menu to move it between areas:").small().color(t.text_dim));
++        ui.label(egui::RichText::new(tr(ui, "Use a field's menu to move it between areas:")).small().color(t.text_dim));
+         let area = |key: &str| -> Vec<String> {
+             info["pivot"][key]
+                 .as_array()
+@@ -67,7 +68,7 @@
+         ui.columns(2, |cols| {
+             for (i, (key, label)) in [("filters", "Filters"), ("columns", "Columns"), ("rows", "Rows"), ("values", "Values")].iter().enumerate() {
+                 let ui = &mut cols[i % 2];
+-                ui.label(egui::RichText::new(*label).strong());
++                ui.label(egui::RichText::new(tr(ui, label)).strong());
+                 egui::Frame::NONE.fill(t.window).corner_radius(4.0).inner_margin(4.0).show(ui, |ui| {
+                     ui.set_min_size(vec2(ui.available_width(), 60.0));
+                     for f in area(key) {
+@@ -83,14 +84,14 @@
+                                 ("filters", "Move to Report Filter"),
+                                 ("values", "Move to Values"),
+                             ] {
+-                                if to != *key && ui.button(l).clicked() {
++                                if to != *key && ui.button(tr(ui, l)).clicked() {
+                                     app.run_or_alert("pivot.moveField", json!({"pivot": name, "field": f, "from": key, "to": to}));
+                                 }
+                             }
+                             if *key == "values" {
+                                 ui.separator();
+                                 for (func, l) in [("sum", "Sum"), ("count", "Count"), ("average", "Average"), ("max", "Max"), ("min", "Min")] {
+-                                    if ui.button(format!("Summarize by {l}")).clicked() {
++                                    if ui.button(format!("{}: {}", tr(ui, "Summarize by"), tr(ui, l))).clicked() {
+                                         app.run_or_alert("pivot.valueSettings", json!({"pivot": name, "field": f, "func": func}));
+                                     }
+                                 }
+@@ -100,14 +101,14 @@
+                                     ("runningTotal", "Running Total"),
+                                     ("rank", "Rank"),
+                                 ] {
+-                                    if ui.button(format!("Show as {l}")).clicked() {
++                                    if ui.button(format!("{}: {}", tr(ui, "Show as"), tr(ui, l))).clicked() {
+                                         app.run_or_alert("pivot.valueSettings", json!({"pivot": name, "field": f, "showAs": sa}));
+                                     }
+                                 }
+                             } else {
+                                 ui.separator();
+                                 for (o, l) in [("asc", "Sort A to Z"), ("desc", "Sort Z to A")] {
+-                                    if ui.button(l).clicked() {
++                                    if ui.button(tr(ui, l)).clicked() {
+                                         app.run_or_alert("pivot.sort", json!({"pivot": name, "field": f, "order": o}));
+                                     }
+                                 }
+@@ -117,13 +118,13 @@
+                                     ("months", "Group by Months"),
+                                     ("none", "Ungroup"),
+                                 ] {
+-                                    if ui.button(l).clicked() {
++                                    if ui.button(tr(ui, l)).clicked() {
+                                         app.run_or_alert("pivot.group", json!({"pivot": name, "field": f, "by": g}));
+                                     }
+                                 }
+                             }
+                             ui.separator();
+-                            if ui.button("Remove Field").clicked() {
++                            if ui.button(tr(ui, "Remove Field")).clicked() {
+                                 app.run_or_alert("pivot.removeField", json!({"pivot": name, "field": f, "area": key}));
+                             }
+                         });
+@@ -133,15 +134,15 @@
+         });
+         ui.separator();
+         ui.horizontal(|ui| {
+-            if ui.button("Refresh").clicked() {
++            if ui.button(tr(ui, "Refresh")).clicked() {
+                 app.run_or_alert("pivot.refresh", json!({"pivot": name}));
+             }
+-            if ui.button("Calculated Field…").clicked() {
++            if ui.button(tr(ui, "Calculated Field…")).clicked() {
+                 app.run_or_alert("pivot.calculatedField", json!({"pivot": name}));
+             }
+-            egui::ComboBox::from_id_salt("pv_layout").selected_text("Report Layout").show_ui(ui, |ui| {
++            egui::ComboBox::from_id_salt("pv_layout").selected_text(tr(ui, "Report Layout")).show_ui(ui, |ui| {
+                 for (l, v) in [("Compact", "compact"), ("Outline", "outline"), ("Tabular", "tabular")] {
+-                    if ui.button(l).clicked() {
++                    if ui.button(tr(ui, l)).clicked() {
+                         app.run_or_alert("pivot.layout", json!({"pivot": name, "layout": v}));
+                     }
+                 }
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -1,5 +1,6 @@
+ //! Title bar (Quick Access Toolbar), ribbon tabs and ribbon groups, and keyboard shortcuts.
+ 
++use crate::i18n::label as tr;
+ use egui::{Align2, Color32, Key, Modifiers, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
+ use gridcraft_engine::model::{HAlign, Style, VAlign};
+ use serde_json::json;
+@@ -51,14 +52,14 @@
+         ui.horizontal_centered(|ui| {
+             ui.add_space(TITLE_LEFT_PAD);
+             // AutoSave toggle (saves after each change when the workbook has a file).
+-            ui.label(egui::RichText::new("AutoSave").font(theme::ui_font(12.5)).color(t.text_dim));
++            ui.label(egui::RichText::new(crate::i18n::current(ui.ctx()).tr("AutoSave")).font(theme::ui_font(12.5)).color(t.text_dim));
+             let on = app.grid.autosave();
+             let (r, resp) = ui.allocate_exact_size(vec2(30.0, 16.0), Sense::click());
+             ui.painter().rect_filled(r, 8.0, if on { t.accent } else { Color32::TRANSPARENT });
+             ui.painter().rect_stroke(r, 8.0, Stroke::new(1.0, if on { t.accent } else { t.text_dim }), StrokeKind::Inside);
+             let knob = if on { pos2(r.right() - 8.0, r.center().y) } else { pos2(r.left() + 8.0, r.center().y) };
+             ui.painter().circle_filled(knob, 5.0, if on { Color32::WHITE } else { t.text_dim });
+-            if resp.on_hover_text("AutoSave: save after every change (workbooks saved to a file)").clicked() {
++            if resp.on_hover_text(crate::i18n::current(ui.ctx()).tr("AutoSave: save after every change (workbooks saved to a file)")).clicked() {
+                 app.grid.toggle_autosave();
+             }
+             ui.add_space(6.0);
+@@ -81,10 +82,10 @@
+                 let labels: Vec<String> =
+                     app.session.active().map(|d| d.undo.iter().rev().take(20).map(|e| e.label.clone()).collect()).unwrap_or_default();
+                 if labels.is_empty() {
+-                    ui.label("Can't Undo");
++                    ui.label(tr(ui, "Can't Undo"));
+                 }
+                 for (i, l) in labels.iter().enumerate() {
+-                    if ui.button(format!("Undo {l}")).clicked() {
++                    if ui.button(format!("{} {}", tr(ui, "Undo"), tr(ui, l))).clicked() {
+                         app.run_or_alert("edit.undo", json!({"steps": i + 1}));
+                     }
+                 }
+@@ -101,11 +102,11 @@
+                     ("Sort A to Z", "data.sortAscending"),
+                     ("Calculate Now", "formulas.calculateNow"),
+                 ] {
+-                    if ui.button(label).clicked() {
++                    if ui.button(tr(ui, label)).clicked() {
+                         app.run_or_alert(id, json!({}));
+                     }
+                 }
+-                if ui.button("Print…").clicked() {
++                if ui.button(tr(ui, "Print…")).clicked() {
+                     app.print_now(json!({}));
+                 }
+             });
+@@ -129,7 +130,7 @@
+                     for (label, fmt) in
+                         [("Save a Copy as Excel Workbook (.xlsx)…", "xlsx"), ("Export as CSV…", "csv"), ("Export as Web Page (.html)…", "html")]
+                     {
+-                        if ui.button(label).clicked() {
++                        if ui.button(tr(ui, label)).clicked() {
+                             app.open_dialog("saveCopy", json!({"format": fmt}));
+                         }
+                     }
+@@ -488,7 +489,7 @@
+                     }
+                 }
+                 ui.separator();
+-                if ui.button("More Borders…").clicked() {
++                if ui.button(tr(ui, "More Borders…")).clicked() {
+                     app.open_dialog("formatCells", json!({"tab": "Border"}));
+                 }
+             });
+@@ -753,7 +754,7 @@
+                     }
+                 }
+                 ui.separator();
+-                if ui.button("More Functions…").clicked() {
++                if ui.button(tr(ui, "More Functions…")).clicked() {
+                     app.open_dialog("insertFunction", json!({}));
+                 }
+             });
+@@ -907,23 +908,23 @@
+ }
+ 
+ fn cf_menu(app: &mut SheetApp, ui: &mut Ui) {
+-    ui.menu_button("Highlight Cells Rules", |ui| {
++    ui.menu_button(tr(ui, "Highlight Cells Rules"), |ui| {
+         for (label, op) in [("Greater Than…", "greater"), ("Less Than…", "less"), ("Between…", "between"), ("Equal To…", "equal")] {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 app.open_dialog("cfQuick", json!({"type": "cellIs", "operator": op, "title": label}));
+             }
+         }
+-        if ui.button("Text that Contains…").clicked() {
++        if ui.button(tr(ui, "Text that Contains…")).clicked() {
+             app.open_dialog("cfQuick", json!({"type": "containsText", "title": "Text that Contains"}));
+         }
+-        if ui.button("A Date Occurring…").clicked() {
++        if ui.button(tr(ui, "A Date Occurring…")).clicked() {
+             app.open_dialog("cfQuick", json!({"type": "timePeriod", "title": "A Date Occurring"}));
+         }
+-        if ui.button("Duplicate Values…").clicked() {
++        if ui.button(tr(ui, "Duplicate Values…")).clicked() {
+             act(app, "home.conditionalFormat", json!({"rule": {"type": "duplicate"}}));
+         }
+     });
+-    ui.menu_button("Top/Bottom Rules", |ui| {
++    ui.menu_button(tr(ui, "Top/Bottom Rules"), |ui| {
+         menu_items(
+             app,
+             ui,
+@@ -937,16 +938,16 @@
+             ],
+         );
+     });
+-    ui.menu_button("Data Bars", |ui| {
++    ui.menu_button(tr(ui, "Data Bars"), |ui| {
+         for (label, c) in
+             [("Blue", "#638EC6"), ("Green", "#63BE7B"), ("Red", "#F8696B"), ("Orange", "#FFB628"), ("Light Blue", "#008AEF"), ("Purple", "#D6007B")]
+         {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 act(app, "home.conditionalFormat", json!({"rule": {"type": "dataBar", "color": c}}));
+             }
+         }
+     });
+-    ui.menu_button("Color Scales", |ui| {
++    ui.menu_button(tr(ui, "Color Scales"), |ui| {
+         for (label, cols) in [
+             ("Green - Yellow - Red", vec!["#63BE7B", "#FFEB84", "#F8696B"]),
+             ("Red - Yellow - Green", vec!["#F8696B", "#FFEB84", "#63BE7B"]),
+@@ -955,12 +956,12 @@
+             ("White - Green", vec!["#FCFCFF", "#63BE7B"]),
+             ("White - Red", vec!["#FCFCFF", "#F8696B"]),
+         ] {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 act(app, "home.conditionalFormat", json!({"rule": {"type": "colorScale", "colors": cols}}));
+             }
+         }
+     });
+-    ui.menu_button("Icon Sets", |ui| {
++    ui.menu_button(tr(ui, "Icon Sets"), |ui| {
+         for (label, set) in [
+             ("3 Arrows", "3Arrows"),
+             ("3 Traffic Lights", "3TrafficLights1"),
+@@ -969,16 +970,16 @@
+             ("5 Arrows", "5Arrows"),
+             ("5 Quarters", "5Quarters"),
+         ] {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 act(app, "home.conditionalFormat", json!({"rule": {"type": "iconSet", "set": set}}));
+             }
+         }
+     });
+     ui.separator();
+-    if ui.button("New Rule…").clicked() {
++    if ui.button(tr(ui, "New Rule…")).clicked() {
+         app.open_dialog("cfQuick", json!({"type": "expression", "title": "New Formatting Rule"}));
+     }
+-    ui.menu_button("Clear Rules", |ui| {
++    ui.menu_button(tr(ui, "Clear Rules"), |ui| {
+         menu_items(
+             app,
+             ui,
+@@ -988,7 +989,7 @@
+             ],
+         );
+     });
+-    if ui.button("Manage Rules…").clicked() {
++    if ui.button(tr(ui, "Manage Rules…")).clicked() {
+         app.open_dialog("manageRules", json!({}));
+     }
+ }
+@@ -998,7 +999,7 @@
+     ui.set_width(430.0);
+     let Some(wb) = app.session.active().map(|d| d.wb.clone()) else { return };
+     for (fam, n) in [("Light", 21u32), ("Medium", 28), ("Dark", 11)] {
+-        ui.label(egui::RichText::new(fam).strong());
++        ui.label(egui::RichText::new(tr(ui, fam)).strong());
+         egui::Grid::new(("tg", fam)).spacing(vec2(4.0, 4.0)).show(ui, |ui| {
+             for i in 1..=n {
+                 let name = format!("TableStyle{fam}{i}");
+@@ -1089,7 +1090,7 @@
+         ("Number Format", &["Comma", "Comma [0]", "Currency", "Currency [0]", "Percent"]),
+     ];
+     for (g, names) in groups {
+-        ui.label(egui::RichText::new(*g).strong());
++        ui.label(egui::RichText::new(tr(ui, g)).strong());
+         egui::Grid::new(("csg", *g)).spacing(vec2(4.0, 4.0)).show(ui, |ui| {
+             for (i, n) in names.iter().enumerate() {
+                 let st = gridcraft_engine::cmd::format::builtin_cell_style(n, &wb.theme).unwrap_or_default();
+@@ -1146,7 +1147,7 @@
+     pic.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), "Pictures"));
+     egui::Popup::menu(&pic).show(|ui| {
+         for (label, placement) in [("Place in Cell", "cell"), ("Place over Cells", "overCells")] {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 app.open_dialog("insertPicture", json!({"placement": placement}));
+                 ui.close();
+             }
+@@ -1163,7 +1164,7 @@
+             ("Arrow", "arrow"),
+             ("Text Box", "textBox"),
+         ] {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 act(app, "insert.shape", json!({"kind": kind}));
+             }
+         }
+@@ -1225,7 +1226,7 @@
+                 let _ = kind;
+                 egui::Popup::menu(&r).show(|ui| {
+                     for (label, k, s) in &subs {
+-                        if ui.button(*label).clicked() {
++                        if ui.button(tr(ui, *label)).clicked() {
+                             act(app, "insert.chart", json!({"type": k, "subtype": s}));
+                         }
+                     }
+@@ -1257,7 +1258,7 @@
+                 let r = small_button(ui, icon, "", tip, true);
+                 egui::Popup::menu(&r).show(|ui| {
+                     for (label, k, s) in &subs {
+-                        if ui.button(*label).clicked() {
++                        if ui.button(tr(ui, *label)).clicked() {
+                             act(app, "insert.chart", json!({"type": k, "subtype": s}));
+                         }
+                     }
+@@ -1273,7 +1274,7 @@
+     let sp = big_button(ui, Icon::Sparkline, "Sparklines", "Sparklines", true);
+     egui::Popup::menu(&sp).show(|ui| {
+         for (label, kind) in [("Line", "line"), ("Column", "column"), ("Win/Loss", "winLoss")] {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 app.open_dialog("sparkline", json!({"type": kind}));
+             }
+         }
+@@ -1879,7 +1880,7 @@
+         return;
+     };
+     ui.vertical(|ui| {
+-        ui.label(egui::RichText::new("Table Name:").small());
++        ui.label(egui::RichText::new(tr(ui, "Table Name:")).small());
+         let field = egui::Id::new(("gridcraft.table_name", &tname));
+         if let Some(name) = crate::widgets::committed_text(ui, field, &tname, Some(120.0))
+             && name != tname
+@@ -1970,7 +1971,7 @@
+             ("Funnel", "funnel", ""),
+             ("Treemap", "treemap", ""),
+         ] {
+-            if ui.button(label).clicked() {
++            if ui.button(tr(ui, label)).clicked() {
+                 act(app, "chart.set", json!({"chart": id, "type": k, "subtype": s}));
+             }
+         }
+--- a/crates/ui-egui/src/tabs.rs
++++ b/crates/ui-egui/src/tabs.rs
+@@ -5,6 +5,7 @@
+ use serde_json::json;
+ 
+ use crate::SheetApp;
++use crate::i18n::label as tr;
+ use crate::icons::{self, Icon};
+ use crate::theme::{self, Tokens};
+ 
+@@ -133,23 +134,23 @@
+                                 }
+                                 resp.context_menu(|ui| {
+                                     ui.set_min_width(180.0);
+-                                    if ui.button("Insert Sheet").clicked() {
++                                    if ui.button(tr(ui, "Insert Sheet")).clicked() {
+                                         app.run_or_alert("home.insertSheet", json!({"before": i}));
+                                     }
+-                                    if ui.button("Delete").clicked() {
++                                    if ui.button(tr(ui, "Delete")).clicked() {
+                                         app.run_or_alert("home.deleteSheet", json!({"sheet": i}));
+                                     }
+-                                    if ui.button("Rename").clicked() {
++                                    if ui.button(tr(ui, "Rename")).clicked() {
+                                         app.grid.renaming_tab = Some(i);
+                                         app.grid.rename_text = name.clone();
+                                     }
+-                                    if ui.button("Move or Copy…").clicked() {
++                                    if ui.button(tr(ui, "Move or Copy…")).clicked() {
+                                         app.open_dialog("moveSheet", json!({"sheet": i}));
+                                     }
+-                                    if ui.button("Duplicate").clicked() {
++                                    if ui.button(tr(ui, "Duplicate")).clicked() {
+                                         app.run_or_alert("sheet.move", json!({"sheet": i, "to": i + 1, "copy": true}));
+                                     }
+-                                    ui.menu_button("Tab Color", |ui| {
++                                    ui.menu_button(tr(ui, "Tab Color"), |ui| {
+                                         let colors = app.session.active().map(|d| d.wb.theme.colors).unwrap_or_default();
+                                         if let Some(c) = crate::widgets::color_palette(ui, &colors, "No Color") {
+                                             app.run_or_alert("sheet.tabColor", json!({"sheet": i, "color": c}));
+@@ -157,10 +158,10 @@
+                                         }
+                                     });
+                                     ui.separator();
+-                                    if ui.button("Hide").clicked() {
++                                    if ui.button(tr(ui, "Hide")).clicked() {
+                                         app.run_or_alert("sheet.hide", json!({"sheet": i}));
+                                     }
+-                                    if ui.button("Unhide…").clicked() {
++                                    if ui.button(tr(ui, "Unhide…")).clicked() {
+                                         app.run_or_alert("sheet.unhide", json!({}));
+                                     }
+                                     ui.separator();
+@@ -168,7 +169,7 @@
+                                     if ui.button(if protected { "Unprotect Sheet…" } else { "Protect Sheet…" }).clicked() {
+                                         app.open_dialog(if protected { "unprotectSheet" } else { "protectSheet" }, json!({}));
+                                     }
+-                                    if ui.button("Select All Sheets").clicked() {
++                                    if ui.button(tr(ui, "Select All Sheets")).clicked() {
+                                         ui.close();
+                                     }
+                                 });
+@@ -232,7 +233,7 @@
+                 if let Some(d) = app.session.active() {
+                     if d.wb.vba_project.is_some() {
+                         ui.add_space(12.0);
+-                        ui.label(egui::RichText::new("Macros preserved (not executed)").font(theme::ui_font(12.5)).color(t.danger));
++                        ui.label(egui::RichText::new(tr(ui, "Macros preserved (not executed)")).font(theme::ui_font(12.5)).color(t.danger));
+                     }
+                     if d.wb.calc.mode == gridcraft_engine::model::CalcMode::Manual {
+                         ui.add_space(12.0);
+@@ -242,7 +243,7 @@
+                         ui.add_space(12.0);
+                         let (si, c) = d.calc.circular[0];
+                         let name = d.wb.sheet(si).map(|s| s.name.clone()).unwrap_or_default();
+-                        ui.label(egui::RichText::new(format!("Circular References: {name}!{}", c.a1())).font(theme::ui_font(12.5)).color(t.danger));
++                        ui.label(egui::RichText::new(format!("{}: {name}!{}", tr(ui, "Circular References"), c.a1())).font(theme::ui_font(12.5)).color(t.danger));
+                     }
+                     if app.session.clipboard.is_some() && app.editor.is_none() {
+                         ui.add_space(12.0);
+@@ -311,13 +312,13 @@
+                         };
+                         let mut parts = Vec::new();
+                         if st.numeric > 0 {
+-                            parts.push(format!("Sum: {}", fmt(st.sum)));
++                            parts.push(format!("{}: {}", tr(ui, "Sum"), fmt(st.sum)));
+                         }
+                         if st.count > 0 {
+-                            parts.push(format!("Count: {}", st.count));
++                            parts.push(format!("{}: {}", tr(ui, "Count"), st.count));
+                         }
+                         if let Some(a) = st.average {
+-                            parts.push(format!("Average: {}", fmt(a)));
++                            parts.push(format!("{}: {}", tr(ui, "Average"), fmt(a)));
+                         }
+                         for p in parts {
+                             ui.label(egui::RichText::new(p).font(theme::ui_font(12.5)).color(t.text_dim));
+--- a/crates/ui-egui/src/widgets.rs
++++ b/crates/ui-egui/src/widgets.rs
+@@ -11,7 +11,7 @@
+ /// Translates a label or tooltip for the language of the frame being drawn (English if untranslated).
+ /// Ribbon chrome all flows through these widgets, so translating here localises it in one place.
+ fn tr<'a>(ui: &Ui, text: &'a str) -> &'a str {
+-    i18n::current(ui.ctx()).tr(text)
++    i18n::current(ui.ctx()).tr(text.trim())
+ }
+ 
+ /// A flat square icon button with hover highlight and tooltip.
+@@ -148,10 +148,10 @@
+ /// `Some("none")` for No Fill/Automatic.
+ pub fn color_palette(ui: &mut Ui, theme_colors: &[u32; 12], none_label: &str) -> Option<String> {
+     let mut picked = None;
+-    if ui.button(none_label).clicked() {
++    if ui.button(tr(ui, none_label)).clicked() {
+         picked = Some("none".to_string());
+     }
+-    ui.label(egui::RichText::new("Theme Colors").small());
++    ui.label(egui::RichText::new(tr(ui, "Theme Colors")).small());
+     let order = [0usize, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+     let tints = [0.0f64, 0.8, 0.6, 0.4, -0.25, -0.5];
+     egui::Grid::new(ui.id().with("theme_grid")).spacing(vec2(2.0, 2.0)).show(ui, |ui| {
+@@ -174,7 +174,7 @@
+             ui.end_row();
+         }
+     });
+-    ui.label(egui::RichText::new("Standard Colors").small());
++    ui.label(egui::RichText::new(tr(ui, "Standard Colors")).small());
+     ui.horizontal(|ui| {
+         ui.spacing_mut().item_spacing.x = 2.0;
+         for hex in ["#C00000", "#FF0000", "#FFC000", "#FFFF00", "#92D050", "#00B050", "#00B0F0", "#0070C0", "#002060", "#7030A0"] {
+@@ -208,7 +208,7 @@
+         });
+         ui.add_space(8.0);
+         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+-            if ui.button("  OK  ").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)) {
++            if ui.button(tr(ui, "  OK  ")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)) {
+                 close = true;
+             }
+         });
+--- a/crates/ui-egui/src/i18n/ru.rs
++++ b/crates/ui-egui/src/i18n/ru.rs
+@@ -393,6 +393,852 @@
+         "Workbook calculation" => "Вычисления в книге",
+         "Enable iterative calculation" => "Включить итеративные вычисления",
+         "Calculation settings are saved with the workbook." => "Параметры вычислений сохраняются вместе с книгой.",
++        "(No suggestions)" => "(Нет вариантов)",
++        "+ Add Level" => "+ Добавить уровень",
++        "A clean-room, open-source, Rust-native spreadsheet. Part of ArtCraft." => "Табличный редактор с открытым исходным кодом на Rust. Часть ArtCraft.",
++        "A to Z" => "От А до Я",
++        "About" => "О программе",
++        "About GridCraft" => "О программе GridCraft",
++        "Accessibility" => "Специальные возможности",
++        "Action" => "Действие",
++        "Action Journal" => "Журнал действий",
++        "Add" => "Добавить",
++        "Add Watch (active cell)" => "Добавить наблюдение за активной ячейкой",
++        "Add subtotal to (columns, e.g. C,D):" => "Добавить итоги по столбцам (например C,D):",
++        "Add to Dictionary" => "Добавить в словарь",
++        "Agent Control" => "Управление агентами",
++        "Aggregate duplicates using" => "Объединять повторения методом",
++        "Alignment" => "Выравнивание",
++        "All" => "Всё",
++        "All except borders" => "Всё, кроме границ",
++        "Allow" => "Разрешить",
++        "Allow all users of this sheet to:" => "Разрешить пользователям этого листа:",
++        "Alpha:" => "Уровень значимости:",
++        "Analysis Tools" => "Инструменты анализа",
++        "Any value" => "Любое значение",
++        "Apply" => "Применить",
++        "Area" => "С областями",
++        "At each change in (column letter):" => "При изменении столбца (буква):",
++        "AutoSave" => "Автосохранение",
++        "AutoSave: save after every change (workbooks saved to a file)" => "Автосохранение после каждого изменения (для книг с выбранным файлом)",
++        "Automation in this workbook. GridCraft runs its own scripts; a file's VBA project is preserved but not executed." => "Автоматизация книги. GridCraft выполняет собственные сценарии; проект VBA сохраняется в файле, но не выполняется.",
++        "Average" => "Среднее",
++        "Background Color:" => "Цвет фона:",
++        "Bar" => "Линейчатая",
++        "Before sheet (position, 0 = first):" => "Перед листом (позиция, 0 — первый):",
++        "Bin Range (blank for automatic bins):" => "Интервалы (пусто — автоматически):",
++        "Blanks" => "Пустые ячейки",
++        "Bold" => "Полужирный",
++        "Border" => "Граница",
++        "Bottom" => "Снизу",
++        "Bottom margin (in):" => "Нижнее поле (дюймы):",
++        "By Changing Variable Cells:" => "Изменяя ячейки переменных:",
++        "By changing cell:" => "Изменяя значение ячейки:",
++        "Cancel" => "Отмена",
++        "Category:" => "Категория:",
++        "Cell" => "Ячейка",
++        "Cell Color" => "Цвет ячейки",
++        "Cell Values" => "Значения ячеек",
++        "Center Across Selection" => "По центру выделения",
++        "Change" => "Заменить",
++        "Change All" => "Заменить всё",
++        "Chart" => "Диаграмма",
++        "Chart Title" => "Название диаграммы",
++        "Chart Type" => "Тип диаграммы",
++        "Chart data range:" => "Диапазон данных диаграммы:",
++        "Clear Filter" => "Очистить фильтр",
++        "Color:" => "Цвет:",
++        "Column" => "Гистограмма",
++        "Column Width" => "Ширина столбца",
++        "Column chart" => "Гистограмма",
++        "Column width (characters):" => "Ширина столбца (символы):",
++        "Column widths" => "Ширина столбцов",
++        "Columns" => "Столбцы",
++        "Columns (blank = all, e.g. A,C):" => "Столбцы (пусто — все, например A,C):",
++        "Comma" => "Запятая",
++        "Comment:" => "Комментарий:",
++        "Comments and notes (C)" => "Комментарии и примечания (C)",
++        "Conditional Formatting Rules Manager" => "Диспетчер правил условного форматирования",
++        "Conditional formats" => "Условные форматы",
++        "Confidence Level (%):" => "Доверительный уровень (%):",
++        "Confidence Level for Mean (%), blank for none:" => "Доверительный уровень среднего (%), пусто — не вычислять:",
++        "Confidence interval" => "Доверительный интервал",
++        "Confidence level (%):" => "Доверительный уровень (%):",
++        "Constant is Zero" => "Константа — ноль",
++        "Contributors" => "Участники",
++        "Convert Text to Columns" => "Преобразование текста в столбцы",
++        "Count" => "Количество чисел",
++        "CountA" => "Количество значений",
++        "Create Forecast Worksheet" => "Создание листа прогноза",
++        "Create Sparklines" => "Создание спарклайнов",
++        "Create a copy" => "Создать копию",
++        "Cumulative Percentage" => "Интегральный процент",
++        "Current region" => "Текущая область",
++        "Custom (%):" => "Масштаб (%):",
++        "Damping factor:" => "Коэффициент затухания:",
++        "Data Labels" => "Подписи данных",
++        "Data Range:" => "Диапазон данных:",
++        "Data validation" => "Проверка данных",
++        "Date unit" => "Единица времени",
++        "Day" => "День",
++        "Decimal" => "Десятичное число",
++        "Delete rows" => "Удалять строки",
++        "Description (optional):" => "Описание (необязательно):",
++        "Destination:" => "Поместить результат в:",
++        "Diagonal ↗" => "Диагональ ↗",
++        "Diagonal ↘" => "Диагональ ↘",
++        "Display:" => "Текст:",
++        "Distributed" => "Распределённый",
++        "Divide" => "Разделить",
++        "Don't Save" => "Не сохранять",
++        "Double" => "Двойное",
++        "Double Accounting" => "Двойное финансовое",
++        "Doughnut" => "Кольцевая",
++        "Duplicate" => "Создать копию",
++        "Edit…" => "Изменить…",
++        "Elements" => "Элементы",
++        "Entire column" => "Столбец целиком",
++        "Entire row" => "Строка целиком",
++        "Error message:" => "Сообщение об ошибке:",
++        "Error style" => "Вид сообщения об ошибке",
++        "Errors" => "Ошибки",
++        "Fill missing points using" => "Заполнять пропущенные точки методом",
++        "Fill…" => "Заливка…",
++        "Find All" => "Найти всё",
++        "Find Next" => "Найти далее",
++        "Find and Replace" => "Поиск и замена",
++        "Find what:" => "Найти:",
++        "Fits inside the selected cell and moves with its content." => "Помещается в выбранную ячейку и перемещается вместе с её содержимым.",
++        "Font" => "Шрифт",
++        "Footer (in):" => "Нижний колонтитул (дюймы):",
++        "Footer:" => "Нижний колонтитул:",
++        "Forecast end (date or number; blank: a third of the history):" => "Конец прогноза (дата или число; пусто — треть истории):",
++        "Format Cells" => "Формат ячеек",
++        "Format cells" => "Форматировать ячейки",
++        "Format cells that are (value):" => "Форматировать ячейки со значением:",
++        "Format cells that contain a date occurring:" => "Форматировать ячейки с датой:",
++        "Format cells that contain the text:" => "Форматировать ячейки с текстом:",
++        "Format columns" => "Форматировать столбцы",
++        "Format rows" => "Форматировать строки",
++        "Format values where this formula is true:" => "Форматировать значения, для которых формула истинна:",
++        "Formats (T)" => "Форматы (T)",
++        "Formula" => "Формула",
++        "Formula Builder" => "Построитель формул",
++        "Formula:" => "Формула:",
++        "Formulas (F)" => "Формулы (F)",
++        "Formulas and number formats" => "Формулы и числовые форматы",
++        "Go To" => "Переход",
++        "Go To Special" => "Выделение группы ячеек",
++        "Goal Seek" => "Подбор параметра",
++        "Green Fill with Dark Green Text" => "Зелёная заливка и тёмно-зелёный текст",
++        "GridCraft is fully drivable by agents. Every menu item, button and gesture is a command:" => "Агенты могут управлять GridCraft. Каждый пункт меню, кнопка и жест доступны как команда:",
++        "Grouped By:" => "Группирование:",
++        "Growth" => "Геометрическая",
++        "Header (&L left, &C center, &R right; &P page, &N pages, &D date, &A sheet):" => "Верхний колонтитул (&L слева, &C по центру, &R справа; &P страница, &N страниц, &D дата, &A лист):",
++        "Header (in):" => "Верхний колонтитул (дюймы):",
++        "Hidden" => "Скрыть формулы",
++        "Hide" => "Скрыть",
++        "Horizontal axis title:" => "Название горизонтальной оси:",
++        "Hypothesized Mean Difference:" => "Гипотетическая разность средних:",
++        "Ignore Once" => "Пропустить",
++        "Ignore blank" => "Игнорировать пустые ячейки",
++        "In the last 7 days" => "За последние 7 дней",
++        "In-cell dropdown" => "Раскрывающийся список в ячейке",
++        "Include forecast statistics" => "Включить статистику прогноза",
++        "Indent" => "Отступ",
++        "Information" => "Сведения",
++        "Input Range:" => "Входной диапазон:",
++        "Input X Range:" => "Диапазон X:",
++        "Input Y Range:" => "Диапазон Y:",
++        "Input message:" => "Подсказка для ввода:",
++        "Insert Calculated Field" => "Добавление вычисляемого поля",
++        "Insert Chart" => "Вставка диаграммы",
++        "Insert Hyperlink" => "Вставка гиперссылки",
++        "Insert Sheet" => "Вставить лист",
++        "Insert rows" => "Вставлять строки",
++        "Interpolation" => "Интерполяция",
++        "Interval:" => "Интервал:",
++        "Italic" => "Курсив",
++        "Join the ArtCraft Discord" => "Сообщество ArtCraft в Discord",
++        "Justify" => "По ширине",
++        "Keep" => "Сохранить",
++        "Keep Solver Solution" => "Сохранить найденное решение",
++        "Kth Largest (blank for none):" => "K-е наибольшее (пусто — не вычислять):",
++        "Kth Smallest (blank for none):" => "K-е наименьшее (пусто — не вычислять):",
++        "Labels in first row" => "Метки в первой строке",
++        "Last cell" => "Последняя ячейка",
++        "Last month" => "В прошлом месяце",
++        "Last week" => "На прошлой неделе",
++        "Left margin (in):" => "Левое поле (дюймы):",
++        "Legend" => "Легенда",
++        "Legend Entries (Series)" => "Элементы легенды (ряды)",
++        "Light Red Fill" => "Светло-красная заливка",
++        "Light Red Fill with Dark Red Text" => "Светло-красная заливка и тёмно-красный текст",
++        "Line" => "График",
++        "Line chart" => "График",
++        "Linear" => "Линейная",
++        "Link to (web address, e-mail or Sheet!A1):" => "Адрес (сайт, почта или Лист!A1):",
++        "List" => "Список",
++        "Location Range:" => "Диапазон размещения:",
++        "Locked" => "Защищаемая ячейка",
++        "Locking cells or hiding formulas has no effect until you protect the worksheet (Review › Protect Sheet)." => "Блокировка ячеек и скрытие формул действуют после защиты листа (Рецензирование › Защитить лист).",
++        "Macros" => "Макросы",
++        "Macros preserved (not executed)" => "Макросы сохранены (не выполняются)",
++        "Magnification" => "Увеличение",
++        "Make Unconstrained Variables Non-Negative" => "Сделать переменные без ограничений неотрицательными",
++        "Markers" => "Маркеры",
++        "Match case" => "Учитывать регистр",
++        "Match entire cell contents" => "Ячейка целиком",
++        "Max" => "Максимум",
++        "Maximum:" => "Максимум:",
++        "Median" => "Медиана",
++        "Min" => "Минимум",
++        "Minimum / Source / Formula:" => "Минимум / Источник / Формула:",
++        "Models" => "Модели",
++        "Modify" => "Изменить",
++        "Month" => "Месяц",
++        "Move or Copy" => "Переместить или скопировать",
++        "Move or Copy…" => "Переместить или скопировать…",
++        "Multiply" => "Умножить",
++        "My data has headers" => "Данные с заголовками",
++        "My list has headers" => "Список с заголовками",
++        "Name" => "Имя",
++        "Name Manager" => "Диспетчер имён",
++        "Name:" => "Имя:",
++        "New title (Modify):" => "Новое название:",
++        "New…" => "Создать…",
++        "Next month" => "В следующем месяце",
++        "Next week" => "На следующей неделе",
++        "No comments on this sheet yet. Select a cell and choose New Comment." => "На этом листе пока нет комментариев. Выберите ячейку и нажмите «Создать комментарий».",
++        "No names defined" => "Имена не определены",
++        "None" => "Нет",
++        "Normal Probability" => "Нормальное распределение",
++        "Numbers" => "Числа",
++        "OK" => "ОК",
++        "Open…" => "Открыть…",
++        "Operation" => "Операция",
++        "Orientation (degrees)" => "Поворот (градусы)",
++        "Other:" => "Другой:",
++        "Outline" => "Контур",
++        "Output options" => "Параметры вывода",
++        "Page Setup" => "Параметры страницы",
++        "Pareto (sorted histogram)" => "Парето (упорядоченная гистограмма)",
++        "Password (optional):" => "Пароль (необязательно):",
++        "Password:" => "Пароль:",
++        "Paste Special" => "Специальная вставка",
++        "Pick From List" => "Выбрать из списка",
++        "Picture file path (PNG or JPEG):" => "Путь к рисунку (PNG или JPEG):",
++        "Pie" => "Круговая",
++        "Product" => "Произведение",
++        "Protect Sheet" => "Защитить лист",
++        "Protect Structure and Windows" => "Защитить структуру и окна",
++        "Protect workbook for: Structure (sheets can't be added, moved, renamed, hidden or deleted)." => "Защита структуры книги запрещает добавление, перемещение, переименование, скрытие и удаление листов.",
++        "Protection" => "Защита",
++        "Radar" => "Лепестковая",
++        "Range password:" => "Пароль диапазона:",
++        "Red Border" => "Красная граница",
++        "Red Text" => "Красный текст",
++        "Reference:" => "Ссылка:",
++        "Refers To" => "Диапазон",
++        "Refers to cells:" => "Диапазон ячеек:",
++        "Refers to:" => "Диапазон:",
++        "Remove Duplicates" => "Удаление дубликатов",
++        "Remove the password (Modify)" => "Удалить пароль",
++        "Rename" => "Переименовать",
++        "Rename Sheet" => "Переименовать лист",
++        "Reopen" => "Возобновить",
++        "Replace" => "Заменить",
++        "Replace All" => "Заменить всё",
++        "Replace with:" => "Заменить на:",
++        "Reply…" => "Ответить…",
++        "Residuals" => "Остатки",
++        "Resolve" => "Завершить",
++        "Resolved" => "Обсуждение завершено",
++        "Restore Original Values" => "Восстановить исходные значения",
++        "Right margin (in):" => "Правое поле (дюймы):",
++        "Row Height" => "Высота строки",
++        "Row height (pixels):" => "Высота строки (пиксели):",
++        "Rows" => "Строки",
++        "Sample" => "Образец",
++        "Save Changes?" => "Сохранить изменения?",
++        "Save a Copy" => "Сохранить копию",
++        "Save a copy as" => "Сохранить копию в формате",
++        "Save changes to" => "Сохранить изменения в",
++        "Scatter" => "Точечная",
++        "Scope" => "Область",
++        "Scope (Workbook or sheet name):" => "Область (Workbook или имя листа):",
++        "ScreenTip:" => "Подсказка:",
++        "Search Commands" => "Поиск команд",
++        "Search:" => "Поиск:",
++        "Seasonality (auto, 0 for none, or a season length):" => "Сезонность (auto, 0 — нет, либо длина сезона):",
++        "Select" => "Выбрать",
++        "Select All Sheets" => "Выделить все листы",
++        "Select Data Source" => "Выбор источника данных",
++        "Select a Solving Method:" => "Метод решения:",
++        "Select a chart to format it." => "Выберите диаграмму для форматирования.",
++        "Semicolon" => "Точка с запятой",
++        "Send" => "Отправить",
++        "Series" => "Прогрессия",
++        "Series in" => "Ряды в",
++        "Set Objective:" => "Оптимизировать целевую функцию:",
++        "Set cell:" => "Установить в ячейке:",
++        "Shift cells down" => "Со сдвигом ячеек вниз",
++        "Shift cells left" => "Со сдвигом ячеек влево",
++        "Shift cells right" => "Со сдвигом ячеек вправо",
++        "Shift cells up" => "Со сдвигом ячеек вверх",
++        "Show password" => "Показать пароль",
++        "Shrink to fit" => "Автоподбор ширины",
++        "Single" => "Одинарное",
++        "Single Accounting" => "Одинарное финансовое",
++        "Skip blanks" => "Пропускать пустые ячейки",
++        "Solve" => "Найти решение",
++        "Solver Parameters" => "Параметры поиска решения",
++        "Solver Results" => "Результаты поиска решения",
++        "Sort by" => "Сортировать по",
++        "Space" => "Пробел",
++        "Special…" => "Выделить…",
++        "Stacked" => "С накоплением",
++        "Standard Colors" => "Стандартные цвета",
++        "Standard Errors" => "Стандартные ошибки",
++        "Standard Width" => "Стандартная ширина",
++        "Standard column width (pixels):" => "Стандартная ширина столбца (пиксели):",
++        "Standardized Residuals" => "Стандартизованные остатки",
++        "Start a new workbook" => "Создать книгу",
++        "Step value:" => "Шаг:",
++        "Stop" => "Остановить",
++        "Stop value:" => "Предельное значение:",
++        "Subject to the Constraints:" => "В соответствии с ограничениями:",
++        "Subscript" => "Подстрочный",
++        "Subtract" => "Вычесть",
++        "Suggestions:" => "Варианты:",
++        "Sum" => "Сумма",
++        "Summary statistics" => "Итоговая статистика",
++        "Superscript" => "Надстрочный",
++        "Tab" => "Знак табуляции",
++        "Tab Color" => "Цвет ярлыка",
++        "Text length" => "Длина текста",
++        "The chart no longer exists." => "Диаграмма больше не существует.",
++        "The output range already holds data. Replace it with the report?" => "В выходном диапазоне уже есть данные. Заменить их отчётом?",
++        "The spelling check is complete for the entire sheet." => "Проверка орфографии на всём листе завершена.",
++        "Theme Colors" => "Цвета темы",
++        "Then by" => "Затем по",
++        "There are no conditional formatting rules on this sheet." => "На этом листе нет правил условного форматирования.",
++        "There are no shapes, pictures or charts on this sheet." => "На этом листе нет фигур, рисунков и диаграмм.",
++        "This month" => "В этом месяце",
++        "This week" => "На этой неделе",
++        "This workbook has no scripts or macros." => "В этой книге нет сценариев и макросов.",
++        "Timeline range (blank: first column of the selection):" => "Диапазон времени (пусто — первый столбец выделения):",
++        "Title:" => "Название:",
++        "To value:" => "Значение:",
++        "To:" => "До:",
++        "Today" => "Сегодня",
++        "Tomorrow" => "Завтра",
++        "Top" => "Сверху",
++        "Top margin (in):" => "Верхнее поле (дюймы):",
++        "Transpose (E)" => "Транспонировать (E)",
++        "Treat consecutive delimiters as one" => "Считать последовательные разделители одним",
++        "Type" => "Тип",
++        "Type (custom format code):" => "Код пользовательского формата:",
++        "Unhide" => "Показать",
++        "Unhide sheet:" => "Показать лист:",
++        "Unhide…" => "Показать…",
++        "Unlock with password" => "Разблокировать паролем",
++        "Unprotect Sheet" => "Снять защиту листа",
++        "Unprotect Workbook" => "Снять защиту книги",
++        "Use AutoFilter" => "Использовать автофильтр",
++        "Use function" => "Использовать функцию",
++        "Validation" => "Проверка",
++        "Value" => "Значение",
++        "Values (V)" => "Значения (V)",
++        "Values and number formats" => "Значения и числовые форматы",
++        "Values range (blank: second column of the selection):" => "Диапазон значений (пусто — второй столбец выделения):",
++        "Variable 1 Range:" => "Диапазон переменной 1:",
++        "Variable 2 Range:" => "Диапазон переменной 2:",
++        "Version" => "Версия",
++        "Vertical" => "По вертикали",
++        "Vertical axis title:" => "Название вертикальной оси:",
++        "Visible cells only" => "Только видимые ячейки",
++        "Warning" => "Предупреждение",
++        "Weekday" => "Рабочий день",
++        "Whole number" => "Целое число",
++        "Within workbook" => "Во всей книге",
++        "Workbook Statistics" => "Статистика книги",
++        "Wrap text" => "Переносить по словам",
++        "Year" => "Год",
++        "Yellow Fill with Dark Yellow Text" => "Жёлтая заливка и тёмно-жёлтый текст",
++        "Yesterday" => "Вчера",
++        "Z to A" => "От Я до А",
++        "Zeros" => "Нули",
++        "and:" => "и:",
++        "between" => "между",
++        "dashed" => "штриховая",
++        "dotted" => "пунктирная",
++        "double" => "двойная",
++        "equal to" => "равно",
++        "greater than" => "больше",
++        "greater than or equal to" => "больше или равно",
++        "less than" => "меньше",
++        "less than or equal to" => "меньше или равно",
++        "medium" => "средняя",
++        "none" => "нет",
++        "not between" => "вне диапазона",
++        "not equal to" => "не равно",
++        "thick" => "толстая",
++        "thin" => "тонкая",
++        "with" => "с форматом",
++        "— VBA project (preserved, not run)" => "— проект VBA (сохраняется, но не выполняется)",
++        "↑  Sort Ascending" => "↑  Сортировка по возрастанию",
++        "↓  Sort Descending" => "↓  Сортировка по убыванию",
++        "% of Grand Total" => "% от общего итога",
++        "% of all commits" => "% всех изменений",
++        "100% Stacked Column" => "Нормированная гистограмма с накоплением",
++        "20% - Accent1" => "20% — Акцент 1",
++        "20% - Accent2" => "20% — Акцент 2",
++        "20% - Accent3" => "20% — Акцент 3",
++        "20% - Accent4" => "20% — Акцент 4",
++        "20% - Accent5" => "20% — Акцент 5",
++        "20% - Accent6" => "20% — Акцент 6",
++        "3 Arrows" => "3 стрелки",
++        "3 Symbols" => "3 символа",
++        "3 Traffic Lights" => "3 светофора",
++        "4 Ratings" => "4 оценки",
++        "40% - Accent1" => "40% — Акцент 1",
++        "40% - Accent2" => "40% — Акцент 2",
++        "40% - Accent3" => "40% — Акцент 3",
++        "40% - Accent4" => "40% — Акцент 4",
++        "40% - Accent5" => "40% — Акцент 5",
++        "40% - Accent6" => "40% — Акцент 6",
++        "5 Arrows" => "5 стрелок",
++        "5 Quarters" => "5 долей",
++        "60% - Accent1" => "60% — Акцент 1",
++        "60% - Accent2" => "60% — Акцент 2",
++        "60% - Accent3" => "60% — Акцент 3",
++        "60% - Accent4" => "60% — Акцент 4",
++        "60% - Accent5" => "60% — Акцент 5",
++        "60% - Accent6" => "60% — Акцент 6",
++        "A Date Occurring" => "Дата",
++        "A Date Occurring…" => "Дата…",
++        "ANOVA: Single Factor" => "Однофакторный дисперсионный анализ",
++        "Accent1" => "Акцент 1",
++        "Accent2" => "Акцент 2",
++        "Accent3" => "Акцент 3",
++        "Accent4" => "Акцент 4",
++        "Accent5" => "Акцент 5",
++        "Accent6" => "Акцент 6",
++        "Activate Sheet" => "Перейти к листу",
++        "Add Chart Element" => "Добавить элемент диаграммы",
++        "Add Field" => "Добавить поле",
++        "Add Scenario" => "Добавить сценарий",
++        "Add-ins" => "Надстройки",
++        "Advanced…" => "Дополнительно…",
++        "Align" => "Выровнять",
++        "Align Left" => "Выровнять по левому краю",
++        "Align Right" => "Выровнять по правому краю",
++        "All Borders" => "Все границы",
++        "All Scripts" => "Все сценарии",
++        "Allow Edit Ranges…" => "Разрешить изменение диапазонов…",
++        "Arrange All" => "Расположить все окна",
++        "AutoFill" => "Автозаполнение",
++        "Available engine commands" => "Доступно команд движка",
++        "Background" => "Фон",
++        "Bad" => "Плохо",
++        "Banded Columns" => "Чередующиеся столбцы",
++        "Banded Rows" => "Чередующиеся строки",
++        "Between…" => "Между…",
++        "Binary assets added" => "Добавлено двоичных файлов",
++        "Binary assets removed" => "Удалено двоичных файлов",
++        "Blue" => "Синий",
++        "Blue - White - Red" => "Синий — белый — красный",
++        "Border presets" => "Наборы границ",
++        "Bottom Align" => "По нижнему краю",
++        "Bottom Border" => "Нижняя граница",
++        "Bottom Double Border" => "Двойная нижняя граница",
++        "Bring Forward" => "Переместить вперёд",
++        "Calculate Now (F9)" => "Вычислить сейчас (F9)",
++        "Calculate Sheet (⇧F9)" => "Вычислить лист (⇧F9)",
++        "Calculated Field" => "Вычисляемое поле",
++        "Calculated Field…" => "Вычисляемое поле…",
++        "Calculation" => "Вычисление",
++        "Calculation Options" => "Параметры вычислений",
++        "Can't Undo" => "Нет действий для отмены",
++        "Cancel Copy" => "Отменить копирование",
++        "Cell Styles" => "Стили ячеек",
++        "Cells found" => "Найдено ячеек",
++        "Change Chart Type" => "Изменить тип диаграммы",
++        "Change Chart Type…" => "Изменить тип диаграммы…",
++        "Change Colors" => "Изменить цвета",
++        "Change Data Source" => "Изменить источник данных",
++        "Chart Properties" => "Свойства диаграммы",
++        "Chart Recommendations" => "Рекомендации диаграмм",
++        "Check Accessibility" => "Проверить специальные возможности",
++        "Check Cell" => "Контрольная ячейка",
++        "Check Value Against Validation" => "Проверить значение по правилу",
++        "Choose fields to add to report:" => "Выберите поля для отчёта:",
++        "Circular References" => "Циклические ссылки",
++        "Clear Rules" => "Удалить правила",
++        "Clear Slicer Filter" => "Очистить фильтр среза",
++        "Clustered Bar" => "Линейчатая с группировкой",
++        "Clustered Column" => "Гистограмма с группировкой",
++        "Colors" => "Цвета",
++        "Colors & Layout" => "Цвета и макет",
++        "Column or Bar" => "Гистограмма или линейчатая",
++        "Comments pane" => "Панель комментариев",
++        "Commits" => "Изменения",
++        "Compact" => "Сжатый",
++        "Consolidate…" => "Консолидация…",
++        "Convert the last ink stroke to a shape" => "Преобразовать последний штрих в фигуру",
++        "Convert to Range" => "Преобразовать в диапазон",
++        "Copy" => "Копировать",
++        "Correlation" => "Корреляция",
++        "Covariance" => "Ковариация",
++        "Credits|Share" => "Доля",
++        "Custom Sort" => "Настраиваемая сортировка",
++        "Custom Views…" => "Представления…",
++        "Cut" => "Вырезать",
++        "Data Analysis…" => "Анализ данных…",
++        "Data and Model" => "Данные и модель",
++        "Date & Time" => "Дата и время",
++        "Define Name…" => "Задать имя…",
++        "Delete Chart" => "Удалить диаграмму",
++        "Delete Comment" => "Удалить комментарий",
++        "Delete Name" => "Удалить имя",
++        "Delete Object" => "Удалить объект",
++        "Delete PivotTable" => "Удалить сводную таблицу",
++        "Delete Scenario" => "Удалить сценарий",
++        "Delete Script" => "Удалить сценарий автоматизации",
++        "Delete Sheet" => "Удалить лист",
++        "Delete Slicer" => "Удалить срез",
++        "Delete chart" => "Удалить диаграмму",
++        "Descriptive Statistics" => "Описательная статистика",
++        "Display name" => "Отображаемое имя",
++        "Draw Border" => "Нарисовать границу",
++        "Duplicate Values…" => "Повторяющиеся значения…",
++        "Edit Cell" => "Изменить ячейку",
++        "Edit Text Box" => "Изменить надпись",
++        "Edit chart title" => "Изменить название диаграммы",
++        "Effects" => "Эффекты",
++        "Encode Workbook" => "Кодировать книгу",
++        "Enter Cell" => "Ввести значение ячейки",
++        "Equal To…" => "Равно…",
++        "Erase ink strokes" => "Стереть рукописные штрихи",
++        "Evaluate" => "Вычислить",
++        "Every command run in this session (replayable)" => "Все команды сеанса с возможностью повторного выполнения",
++        "Expand/Collapse Field" => "Развернуть/свернуть поле",
++        "Explanatory Text" => "Пояснительный текст",
++        "Exponential Smoothing" => "Экспоненциальное сглаживание",
++        "Export as CSV" => "Экспорт в CSV",
++        "Export as CSV…" => "Экспортировать в CSV…",
++        "Export as PDF" => "Экспортировать в PDF",
++        "Export as Web Page (.html)…" => "Экспортировать в веб-страницу (.html)…",
++        "F-Test Two-Sample for Variances" => "Двухвыборочный F-тест дисперсий",
++        "Field List" => "Список полей",
++        "Fill Down" => "Заполнить вниз",
++        "Fill Left" => "Заполнить влево",
++        "Fill Range With Input" => "Заполнить диапазон значением",
++        "Fill Right" => "Заполнить вправо",
++        "Fill Up" => "Заполнить вверх",
++        "Filter (⌘⇧F)" => "Фильтр (⌘⇧F)",
++        "Filter Column" => "Фильтровать столбец",
++        "Filter Items" => "Фильтровать элементы",
++        "Filters" => "Фильтры",
++        "Find & Select" => "Найти и выделить",
++        "First" => "Первое",
++        "First Column" => "Первый столбец",
++        "First commit" => "Первое изменение",
++        "Flash Fill (⌘E)" => "Мгновенное заполнение (⌘E)",
++        "Font Size" => "Размер шрифта",
++        "Fonts" => "Шрифты",
++        "Forecast Sheet" => "Лист прогноза",
++        "Format Chart pane" => "Панель форматирования диаграммы",
++        "Format Painter" => "Формат по образцу",
++        "Format Selection" => "Формат выделенного объекта",
++        "Format as Table" => "Форматировать как таблицу",
++        "From Table/Range" => "Из таблицы/диапазона",
++        "From Text/CSV" => "Из текста/CSV",
++        "Funnel" => "Воронка",
++        "GRG Nonlinear" => "Нелинейный метод ОПГ",
++        "GRG Nonlinear: a local optimum of a smooth model, from the current values." => "Нелинейный метод ОПГ: поиск локального оптимума гладкой модели от текущих значений.",
++        "Get Cell" => "Получить ячейку",
++        "Get Data" => "Получить данные",
++        "Good" => "Хорошо",
++        "Good, Bad and Neutral" => "Хороший, плохой и нейтральный",
++        "Grab bag" => "Список",
++        "Gradebook" => "Журнал оценок",
++        "Grand Totals" => "Общие итоги",
++        "Greater Than…" => "Больше…",
++        "Green" => "Зелёный",
++        "Green - White - Red" => "Зелёный — белый — красный",
++        "Green - Yellow - Red" => "Зелёный — жёлтый — красный",
++        "Group Field" => "Группировать поле",
++        "Group by Months" => "Группировать по месяцам",
++        "Group by Quarters" => "Группировать по кварталам",
++        "Group by Years" => "Группировать по годам",
++        "Header Row" => "Строка заголовков",
++        "Heading 1" => "Заголовок 1",
++        "Heading 2" => "Заголовок 2",
++        "Heading 3" => "Заголовок 3",
++        "Heading 4" => "Заголовок 4",
++        "Hidden sheets" => "Скрытые листы",
++        "Hide Sheet" => "Скрыть лист",
++        "Highlight Cells Rules" => "Правила выделения ячеек",
++        "Histogram" => "Гистограмма распределения",
++        "Household Budget" => "Семейный бюджет",
++        "How agents drive GridCraft (MCP / control channel)" => "Управление GridCraft агентами (MCP / канал управления)",
++        "Import a text or CSV file" => "Импортировать текстовый файл или CSV",
++        "Ink Stroke" => "Рукописный штрих",
++        "Ink to Shape" => "Преобразовать в фигуру",
++        "Input" => "Ввод",
++        "Insert\nSlicer" => "Вставить\nсрез",
++        "Insert Function (⇧F3)" => "Вставить функцию (⇧F3)",
++        "Insert Function…" => "Вставить функцию…",
++        "Insert Link (⌘K)" => "Вставить ссылку (⌘K)",
++        "Insert Slicer" => "Вставить срез",
++        "Insert a picture" => "Вставить рисунок",
++        "Insert a slicer to filter a table" => "Вставить срез для фильтрации таблицы",
++        "Insert an icon" => "Вставить значок",
++        "Inside Borders" => "Внутренние границы",
++        "Inspect Workbook" => "Проверить книгу",
++        "Lasso Select" => "Произвольное выделение",
++        "Last" => "Последнее",
++        "Last Column" => "Последний столбец",
++        "Last commit" => "Последнее изменение",
++        "Layout" => "Макет",
++        "Left Border" => "Левая граница",
++        "Less Than…" => "Меньше…",
++        "Light Blue" => "Голубой",
++        "Line delta" => "Разница строк",
++        "Line or Area" => "График или с областями",
++        "Line with Markers" => "График с маркерами",
++        "Lines" => "Строки",
++        "Lines +/−" => "Добавлено/удалено строк",
++        "Lines added" => "Добавлено строк",
++        "Lines deleted" => "Удалено строк",
++        "Linked Cell" => "Связанная ячейка",
++        "List Commands" => "Список команд",
++        "List Functions" => "Список функций",
++        "Lookup & Reference" => "Ссылки и массивы",
++        "Macros and scripts in this workbook (Alt+F8)" => "Макросы и сценарии этой книги (Alt+F8)",
++        "Manage Rules…" => "Управление правилами…",
++        "Math & Trig" => "Математические",
++        "Medium" => "Средние",
++        "Merged PRs" => "Принятые запросы на слияние",
++        "Middle Align" => "По центру вертикали",
++        "Model" => "Модель",
++        "More Borders…" => "Другие границы…",
++        "More Functions" => "Другие функции",
++        "More Functions…" => "Другие функции…",
++        "More commands" => "Другие команды",
++        "Move Chart…" => "Переместить диаграмму…",
++        "Move Columns" => "Переместить столбцы",
++        "Move Field" => "Переместить поле",
++        "Move Object" => "Переместить объект",
++        "Move Selection" => "Переместить выделение",
++        "Move or Copy Sheet…" => "Переместить или скопировать лист…",
++        "Move to Column Labels" => "Переместить в столбцы",
++        "Move to Report Filter" => "Переместить в фильтры отчёта",
++        "Move to Row Labels" => "Переместить в строки",
++        "Move to Values" => "Переместить в значения",
++        "Moving Average" => "Скользящее среднее",
++        "Name (A–Z)" => "Имя (А–Я)",
++        "Neutral" => "Нейтральный",
++        "New Cell Style…" => "Создать стиль ячейки…",
++        "New Comment" => "Создать комментарий",
++        "New Formatting Rule" => "Создание правила форматирования",
++        "New Rule…" => "Создать правило…",
++        "New Script" => "Создать сценарий",
++        "New Window" => "Новое окно",
++        "New Workbook" => "Новая книга",
++        "New sheet (⇧F11)" => "Новый лист (⇧F11)",
++        "Next Cell in Selection" => "Следующая ячейка выделения",
++        "Next Sheet" => "Следующий лист",
++        "Next sheet" => "Следующий лист",
++        "No Border" => "Нет границ",
++        "No Calculation" => "Без вычислений",
++        "No Color" => "Нет цвета",
++        "No Fill" => "Нет заливки",
++        "No contributor data was built into this copy." => "В этой сборке нет сведений об участниках.",
++        "No model credits were built into this copy." => "В этой сборке нет сведений о моделях ИИ.",
++        "No picture selected" => "Рисунок не выбран",
++        "No ranges yet." => "Диапазоны ещё не заданы.",
++        "Not in Dictionary" => "Нет в словаре",
++        "Note" => "Примечание",
++        "Number Format" => "Числовой формат",
++        "Object Properties" => "Свойства объекта",
++        "Orange" => "Оранжевый",
++        "Output" => "Вывод",
++        "Outside Borders" => "Внешние границы",
++        "PRs" => "Запросы на слияние",
++        "Page Break Preview" => "Страничный режим",
++        "Page Breaks" => "Разрывы страниц",
++        "Paper Size" => "Размер бумаги",
++        "Paste (⌘V)" => "Вставить (⌘V)",
++        "Pen" => "Перо",
++        "Picture" => "Рисунок",
++        "Pie or Doughnut" => "Круговая или кольцевая",
++        "PivotChart" => "Сводная диаграмма",
++        "PivotTable Fields" => "Поля сводной таблицы",
++        "PivotTable Layout" => "Макет сводной таблицы",
++        "PivotTable Styles" => "Стили сводной таблицы",
++        "PivotTables" => "Сводные таблицы",
++        "Place in Cell" => "Поместить в ячейку",
++        "Place over Cells" => "Поместить поверх ячеек",
++        "Previous Sheet" => "Предыдущий лист",
++        "Previous sheet" => "Предыдущий лист",
++        "Print Area" => "Область печати",
++        "Print Gridlines" => "Печатать сетку",
++        "Print Headings" => "Печатать заголовки",
++        "Print Preview" => "Предварительный просмотр печати",
++        "Print Titles" => "Печатать заголовки",
++        "Print…" => "Печать…",
++        "Protect\nSheet" => "Защитить\nлист",
++        "Protect Workbook structure" => "Защитить структуру книги",
++        "Purple" => "Фиолетовый",
++        "Quarterly Sales Dashboard" => "Квартальные продажи",
++        "Queries & Connections" => "Запросы и подключения",
++        "Quick Layout" => "Экспресс-макет",
++        "Ranges that stay editable when the sheet is protected:" => "Диапазоны, доступные для изменения на защищённом листе:",
++        "Rank" => "Ранг",
++        "Rank and Percentile" => "Ранг и персентиль",
++        "Read Range" => "Прочитать диапазон",
++        "Real name" => "Настоящее имя",
++        "Recently Used" => "Недавно использованные",
++        "Recommended Charts" => "Рекомендуемые диаграммы",
++        "Recommended PivotTables" => "Рекомендуемые сводные таблицы",
++        "Record Actions" => "Записать действия",
++        "Red" => "Красный",
++        "Red - Yellow - Green" => "Красный — жёлтый — зелёный",
++        "Redo" => "Повторить",
++        "Redo (⌘Y)" => "Повторить (⌘Y)",
++        "Refresh" => "Обновить",
++        "Refresh All" => "Обновить всё",
++        "Regression" => "Регрессия",
++        "Remove" => "Удалить",
++        "Remove Field" => "Удалить поле",
++        "Replacements made" => "Выполнено замен",
++        "Reply" => "Ответить",
++        "Report Layout" => "Макет отчёта",
++        "Resize Table" => "Изменить размер таблицы",
++        "Resolve Thread" => "Завершить обсуждение",
++        "Reverse the order" => "Обратный порядок",
++        "Right Border" => "Правая граница",
++        "Rotate" => "Повернуть",
++        "Rounded Rectangle" => "Скруглённый прямоугольник",
++        "Run Script" => "Выполнить сценарий",
++        "Running Total" => "Нарастающий итог",
++        "Save (⌘S)" => "Сохранить (⌘S)",
++        "Save As…" => "Сохранить как…",
++        "Save a Copy as Excel Workbook (.xlsx)…" => "Сохранить копию книги Excel (.xlsx)…",
++        "Save as Web Page" => "Сохранить как веб-страницу",
++        "Scale to Fit" => "Вписать в страницу",
++        "Scatter or Bubble" => "Точечная или пузырьковая",
++        "Scatter with Lines" => "Точечная с линиями",
++        "Scenario Summary" => "Итоги сценария",
++        "Search" => "Поиск",
++        "Search and run any command" => "Найти и выполнить команду",
++        "Search commands (⌘⇧Space)" => "Поиск команд (⌘⇧Пробел)",
++        "Select All" => "Выделить всё",
++        "Select Current Region" => "Выделить текущую область",
++        "Select Data" => "Выбрать данные",
++        "Select Data…" => "Выбрать данные…",
++        "Select Entire Column" => "Выделить столбец целиком",
++        "Select Entire Row" => "Выделить строку целиком",
++        "Select and move ink and shapes" => "Выделить и переместить рукописный ввод и фигуры",
++        "Selection Pane" => "Область выделения",
++        "Selection Statistics" => "Статистика выделения",
++        "Send Backward" => "Переместить назад",
++        "Series…" => "Прогрессия…",
++        "Set Values" => "Задать значения",
++        "Shape Fill" => "Заливка фигуры",
++        "Shape Outline" => "Контур фигуры",
++        "Share: export or save a copy" => "Поделиться: экспортировать или сохранить копию",
++        "Show" => "Показать",
++        "Show Comments" => "Показать комментарии",
++        "Show Formulas (⌃`)" => "Показать формулы (⌃`)",
++        "Show Outline Levels" => "Показать уровни структуры",
++        "Show Scenario" => "Показать сценарий",
++        "Show Zeros" => "Показывать нули",
++        "Show as" => "Показать как",
++        "Shrink to Fit" => "Автоподбор ширины",
++        "Simplex LP" => "Симплекс-метод",
++        "Simplex LP: for linear models; integer and binary constraints by branch and bound." => "Симплекс-метод для линейных моделей; целочисленные и двоичные ограничения обрабатываются методом ветвей и границ.",
++        "Slicer" => "Срез",
++        "Solution found" => "Найдено решение",
++        "Solver…" => "Поиск решения…",
++        "Sort & Filter" => "Сортировка и фильтр",
++        "Sort Field" => "Сортировать поле",
++        "Sort…" => "Сортировка…",
++        "Spelling (F7)" => "Орфография (F7)",
++        "Split" => "Разделить",
++        "Stacked Area" => "С областями и накоплением",
++        "Stacked Bar" => "Линейчатая с накоплением",
++        "Stacked Column" => "Гистограмма с накоплением",
++        "Stacked Line" => "График с накоплением",
++        "Start a conversation:" => "Начать обсуждение:",
++        "Subtotals" => "Промежуточные итоги",
++        "Summarize by" => "Подвести итоги по",
++        "Summarize with PivotTable" => "Сводная таблица",
++        "Switch Row/Column" => "Строка/столбец",
++        "Switch Window" => "Переключить окно",
++        "Switch Windows" => "Переключить окна",
++        "Table (⌘T)" => "Таблица (⌘T)",
++        "Table Name" => "Имя таблицы",
++        "Table Name:" => "Имя таблицы:",
++        "Table Styles" => "Стили таблиц",
++        "Tabular" => "Табличный",
++        "Text Box" => "Надпись",
++        "Text that Contains" => "Текст содержит",
++        "Text that Contains…" => "Текст содержит…",
++        "Text to Columns" => "Текст по столбцам",
++        "Themed Cell Styles" => "Тематические стили ячеек",
++        "Thesaurus" => "Тезаурус",
++        "Thick Bottom Border" => "Толстая нижняя граница",
++        "Thick Outside Borders" => "Толстые внешние границы",
++        "Titles and Headings" => "Названия и заголовки",
++        "Toggle Checkbox" => "Переключить флажок",
++        "Toggle Slicer Value" => "Переключить значение среза",
++        "Top Align" => "По верхнему краю",
++        "Top Border" => "Верхняя граница",
++        "Top and Bottom Border" => "Верхняя и нижняя границы",
++        "Top and Double Bottom Border" => "Верхняя и двойная нижняя границы",
++        "Top and Thick Bottom Border" => "Верхняя и толстая нижняя границы",
++        "Top/Bottom Rules" => "Правила первых и последних значений",
++        "Total" => "Итог",
++        "Total Row" => "Строка итогов",
++        "Totals Function" => "Функция итогов",
++        "Treemap" => "Дерево",
++        "Type a command, e.g. freeze, chart, bold…" => "Введите команду, например: закрепить, диаграмма, полужирный…",
++        "Undo" => "Отменить",
++        "Undo (⌘Z)" => "Отменить (⌘Z)",
++        "Undo History" => "История отмены",
++        "Undo list" => "Список отмены",
++        "Unhide Sheet…" => "Показать лист…",
++        "Unprotect Sheet…" => "Снять защиту листа…",
++        "Use a field's menu to move it between areas:" => "Перемещайте поля между областями через их меню:",
++        "Username" => "Имя пользователя",
++        "Value Field Settings" => "Параметры поля значений",
++        "Values" => "Значения",
++        "Version, contributors and the AI models that helped" => "Версия, участники и использованные модели ИИ",
++        "Warning Text" => "Текст предупреждения",
++        "Watch\nWindow" => "Окно\nконтрольного значения",
++        "Waterfall" => "Водопад",
++        "What-If Analysis" => "Анализ «что если»",
++        "White - Green" => "Белый — зелёный",
++        "White - Red" => "Белый — красный",
++        "Workbook\nStatistics" => "Статистика\nкниги",
++        "Zoom In" => "Увеличить масштаб",
++        "Zoom Out" => "Уменьшить масштаб",
++        "Zoom to 100%" => "Масштаб 100%",
++        "Zoom to Selection" => "Масштаб по выделению",
++        "Zoom…" => "Масштаб…",
++        "commits" => "изменений",
++        "contributors" => "участников",
++        "e.g. lookup, average, date" => "Например: поиск, среднее, дата",
++        "steps" => "шагов",
++        "t-Test: Paired Two Sample for Means" => "Парный двухвыборочный t-тест средних",
++        "t-Test: Two-Sample Assuming Equal Variances" => "Двухвыборочный t-тест с равными дисперсиями",
++        "t-Test: Two-Sample Assuming Unequal Variances" => "Двухвыборочный t-тест с неравными дисперсиями",
++        "this workbook" => "этой книге",
++        "z-Test: Two Sample for Means" => "Двухвыборочный z-тест средних",
+         _ => return None,
+     })
+ }

@@ -87,13 +87,11 @@ mod android {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
-    use jni::objects::{JObject, JValue};
+    use jni::Env;
+    use jni::objects::JObject;
     use jni::signature::RuntimeMethodSignature;
     use jni::strings::JNIStr;
-    use jni::Env;
 
-    /// The permission that stands in for "All files access" before Android 11.
-    const READ: &str = "android.permission.READ_EXTERNAL_STORAGE";
     /// Cache either answer briefly; settings can change while the app is backgrounded.
     pub(super) const CACHE_NO: Duration = Duration::from_secs(1);
 
@@ -131,31 +129,10 @@ mod android {
     }
 
     /// Ask the platform whether shared storage is readable by path.
-    pub(super) fn is_granted(sdk: i32) -> Option<bool> {
+    pub(super) fn is_granted(_sdk: i32) -> Option<bool> {
         with_env(|env, activity| {
-            if sdk >= 30 {
-                // The API 30 way; `Environment.isExternalStorageManager` does not exist below 30,
-                // which is why the whole call is behind this branch.
-                let signature = RuntimeMethodSignature::from_str("()Z")?;
-                let value = env.call_static_method(
-                    name(c"android/os/Environment"),
-                    name(c"isExternalStorageManager"),
-                    signature.method_signature(),
-                    &[],
-                )?;
-                value.z()
-            } else {
-                let signature = RuntimeMethodSignature::from_str("(Ljava/lang/String;)I")?;
-                let permission = env.new_string(READ)?;
-                let value = env.call_method(
-                    activity,
-                    name(c"checkSelfPermission"),
-                    signature.method_signature(),
-                    &[JValue::Object(&permission)],
-                )?;
-                // `PackageManager.PERMISSION_GRANTED` is 0.
-                Ok(value.i()? == 0)
-            }
+            let signature = RuntimeMethodSignature::from_str("()Z")?;
+            env.call_method(activity, name(c"hasStorageAccess"), signature.method_signature(), &[])?.z()
         })
     }
 

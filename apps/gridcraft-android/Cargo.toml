@@ -85,11 +85,12 @@ extract_native_libs = true
 # cargo-apk's default is only `orientation|keyboardHidden|screenSize`; these are the ones a
 # fullscreen, resizable native app handles itself.
 #
-# `singleTop` is what makes a second *Open with* land in this Activity's `onNewIntent` instead of
-# stacking another Activity: the paperwork is imported by the one already drawing.
+# GridCraft already has workbook tabs. Keep one Android Activity even when a file manager
+# launches VIEW from a different task: a second native event loop in this process would fail.
+# singleTask also brings the existing task forward and delivers its file to onNewIntent.
 [package.metadata.android.application.activity]
 name = "ai.storyteller.gridcraft.GridcraftActivity"
-launch_mode = "singleTop"
+launch_mode = "singleTask"
 config_changes = "orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|density|uiMode|fontScale|keyboard|navigation|touchscreen"
 
 # Android's *Open with* and "set as default" need an exported activity with ACTION_VIEW and
@@ -119,6 +120,26 @@ data = [
     { mime_type = "application/json" },
     { mime_type = "application/octet-stream" },
 ]
+
+# Managers disagree about MIME types (some use ZIP or no type for XLSX). Keep the
+# precise spreadsheet filter above, and accept their generic content/file hand-offs too.
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.VIEW", "android.intent.action.EDIT"]
+categories = ["android.intent.category.DEFAULT"]
+data = [
+    { scheme = "content", mime_type = "*/*" },
+    { scheme = "file", mime_type = "*/*" },
+]
+
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.VIEW", "android.intent.action.EDIT"]
+categories = ["android.intent.category.DEFAULT"]
+data = [{ scheme = "content" }, { scheme = "file" }]
+
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.SEND", "android.intent.action.SEND_MULTIPLE"]
+categories = ["android.intent.category.DEFAULT"]
+data = [{ mime_type = "*/*" }]
 
 
 [[package.metadata.android.uses_feature]]
